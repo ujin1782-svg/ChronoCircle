@@ -3036,7 +3036,6 @@ public class ChronoCircleApp {
             this.controller.setMainFrame(this);
 
             this.systemTimer = new SystemTimer(this::onSystemTimerTick);
-            this.systemTimer.setSimulationTarget(LocalDateTime.of(2026, 10, 15, 12, 18, 0));
 
             setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             setMinimumSize(new Dimension(1020, 760));
@@ -3050,6 +3049,7 @@ public class ChronoCircleApp {
             buildBottomStatusAndActionArea();
 
             refreshAllViews();
+            this.systemTimer.setSimulationTarget(LocalDateTime.of(2026, 10, 15, 12, 18, 0));
             this.systemTimer.start();
         }
 
