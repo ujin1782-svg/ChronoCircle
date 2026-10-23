@@ -19,15 +19,14 @@ import java.util.regex.*;
 import java.util.stream.Collectors;
 
 /**
- * ChronoCircle - 24시간 원형 대시보드 기반 스마트 개인 일정 관리 프로그램
+ * ChronoCircle - 24시간 원형 대시보드 기반 개인 일정 관리 프로그램
  *
- * [설계 문서(ssd_ip_cp3_2026f_223235.doc) 요구사항 100% 반영 및 UX/UI 고도화 버전]
  * 1. 24시간 원형 대시보드 (CircularCanvasPanel):
  *    - 24시간을 360도 원형 타임라인으로 시각화, 현재 진행 일정 12시 방향 상단 자동 정렬
  *    - 마우스 드래그 및 휠 스크롤을 통한 부드러운 관성/보간 회전 프리뷰
  *    - 회전 조작 시 실시간 타이머 자동 일시 정지(pauseAutoRefresh) 및 [현재 시각 동기화 (Refresh)] 버튼 노출
  *    - Refresh 클릭 시 부드러운 Ease-Out 애니메이션으로 현재 시각 복귀 및 실시간 트래킹 재개(resyncDashboardToCurrentTime)
- * 2. 사용성(UX) 집중 개선 사항:
+ * 2. 사용성(UX):
  *    - 탭/드로어 개폐 애니메이션: 우측 '한눈에 보는 일과 &amp; 공강 브리핑' 슬라이드 탭, 하단 '현재 일정 상세/진행률' 확장 탭,
  *      상단 '스마트 인앱 알림 배너', 상단 '[일 / 월 / 년]' 세그먼트 캡슐 전환에 60FPS Ease-Out Cubic 애니메이션 적용
  *    - 한눈에 파악하기 쉬운 UI: 원형 시계 내부 콜아웃 카드 + 주/야간 시간대 배경 링 + 우측 타임라인 요약 리스트 연동
@@ -39,7 +38,7 @@ import java.util.stream.Collectors;
  *    - 외부 Gemini REST API 연동 지원 및 오프라인 환경에서도 즉시 작동하는 고정밀 한국어 자연어 파서 내장
  * 4. 무손실 임시 저장 매커니즘 (DraftSessionManager):
  *    - 일정 등록 중 실수로 창을 닫거나 이탈해도 입력 중인 데이터를 메모리에 실시간 캐싱 및 재진입 시 복원 배너 제공
- * 5. 스마트 알림 시스템 (SystemTimer &amp; NotificationDispatcher):
+ * 5. 알림 시스템 (SystemTimer &amp; NotificationDispatcher):
  *    - 분/시/일 단위 사전 알림 및 반복 주기 설정, 시간 중복(Conflict) 감지 다이얼로그, 인앱 슬라이드 알림 배너 &amp; 트레이 알림
  */
 public class ChronoCircleApp {
@@ -114,7 +113,7 @@ public class ChronoCircleApp {
     }
 
     // =========================================================================
-    // 1. DTO 및 도메인 모델 클래스 (Function Specification 규격 준수)
+    // 1. DTO 및 도메인 모델 클래스
     // =========================================================================
 
     /**
@@ -200,7 +199,7 @@ public class ChronoCircleApp {
         }
 
         public String getNotificationSummary() {
-            if (!notificationEnabled) return "알림 사용 안 함";
+            if (!notificationEnabled) return "알림 off";
             String lead = formatMinutes(notificationLeadMinutes) + (notificationLeadMinutes == 0 ? " (정각)" : " 전");
             String rep = repeatIntervalMinutes > 0 ? " / " + formatMinutes(repeatIntervalMinutes) + "마다 반복" : " / 반복 없음";
             return lead + rep;
@@ -1075,7 +1074,7 @@ public class ChronoCircleApp {
     }
 
     /**
-     * [UX 개선 1] 부드러운 슬라이딩 캡슐 애니메이션이 적용된 [ 일 | 월 | 년 ] 뷰 전환 토글 그룹
+     * 부드러운 슬라이딩 캡슐 애니메이션이 적용된 [ 일 | 월 | 년 ] 뷰 전환 토글 그룹
      */
     public static class AnimatedSegmentedControl extends JPanel {
         private final String[] labels = {"일", "월", "년"};
@@ -1186,7 +1185,7 @@ public class ChronoCircleApp {
     }
 
     /**
-     * [UX 개선 2] 부드러운 슬라이드 개폐 애니메이션을 지원하는 컨테이너 (탭 띄우고 내릴 때 자연스러운 모션 제공)
+     * 부드러운 슬라이드 개폐 애니메이션을 지원하는 컨테이너 (탭 띄우고 내릴 때 자연스러운 모션 제공)
      */
     public static class SmoothCollapsiblePanel extends JPanel {
         public enum Direction { HORIZONTAL, VERTICAL }
@@ -1276,7 +1275,7 @@ public class ChronoCircleApp {
     }
 
     // =========================================================================
-    // 8. CircularCanvasPanel (24시간 원형 대시보드 - 와이어프레임 image_2.png + UX 고도화)
+    // 8. CircularCanvasPanel (24시간 원형 대시보드)
     // =========================================================================
     /**
      * [패키지 4: 실시간 원형 대시보드] 24시간을 360도 원형 타임라인(Arc2D.Double)으로 시각화하고 드래그/휠 회전 프리뷰 및 현재 시각 동기화 애니메이션을 제공하는 핵심 캔버스 패널입니다 (REQ 4.1~4.4, UC-09, UC-10).
@@ -1538,7 +1537,7 @@ public class ChronoCircleApp {
                 g2.draw(new Line2D.Double(x1, y1, x2, y2));
             }
 
-            // 2. 4대 방위 시간 라벨 (12 정오, 18 저녁, 24 자정, 06 아침) - 와이어프레임(image_2.png) 완벽 재현
+            // 2. 4대 방위 시간 라벨 (12 정오, 18 저녁, 24 자정, 06 아침)
             drawCardinalLabel(g2, cx, cy - outerTickRadius - 26, "12", "정오");
             drawCardinalLabel(g2, cx + outerTickRadius + 34, cy, "18", "저녁");
             drawCardinalLabel(g2, cx, cy + outerTickRadius + 28, "24", "자정");
@@ -1599,7 +1598,7 @@ public class ChronoCircleApp {
             g2.setStroke(new BasicStroke(2.5f));
             g2.draw(new Ellipse2D.Double(markerX - 5, markerY - 5, 10, 10));
 
-            // 5. 원형 내부 플로팅 콜아웃 카드 렌더링 (image_2.png 완벽 재현)
+            // 5. 원형 내부 플로팅 콜아웃 카드 렌더링
             g2.setFont(uiFont(Font.PLAIN, 12));
             g2.setColor(TEXT_MUTED);
             String centerCaption = systemTimer.isAutoRefreshPaused()
@@ -1753,7 +1752,7 @@ public class ChronoCircleApp {
     }
 
     // =========================================================================
-    // 9. MonthCalendarPanel (월간 달력 뷰 - 와이어프레임 image_4.png + 일정 캡슐/드로어 UX)
+    // 9. MonthCalendarPanel (월간 달력 뷰)
     // =========================================================================
     /**
      * [패키지 3: 다각도 일정 열람] 6x7 격자 레이아웃 기반의 월간 달력 뷰 패널로, 오늘 배지 및 일정 캡슐(Pill) 표시와 일간 뷰 즉시 전환 인터랙션을 제공합니다 (REQ 3.1, 3.2, UC-07).
@@ -2178,7 +2177,7 @@ public class ChronoCircleApp {
     }
 
     // =========================================================================
-    // 11. ScheduleFormDialog (일정 등록/수정 모달 - 와이어프레임 image_3.png 100% 재현)
+    // 11. ScheduleFormDialog (일정 등록/수정 모달)
     // =========================================================================
     /**
      * [패키지 1 &amp; 5: 일정 등록/수정 모달] AI 자연어 빠른 등록, 실시간 무손실 임시 저장(DraftSessionManager), 알림 주기 설정 및 시간 중복 검증을 수행하는 모달 다이얼로그입니다 (REQ 1.1~1.3, 2.2~2.3, 5.1~5.2).
@@ -2270,10 +2269,10 @@ public class ChronoCircleApp {
             draftRestoredBanner.setLayout(new BorderLayout(8, 0));
             draftRestoredBanner.setBorder(new EmptyBorder(8, 12, 8, 12));
             draftRestoredBanner.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-            JLabel lblBanner = new JLabel("💡 작성 중이던 임시 저장 데이터를 자동으로 복구했습니다.");
+            JLabel lblBanner = new JLabel("작성 중이던 데이터를 자동으로 복구했습니다.");
             lblBanner.setFont(uiFont(Font.BOLD, 12));
             lblBanner.setForeground(new Color(0x92, 0x40, 0x0E));
-            ModernButton btnClearDraft = new ModernButton("비우기 (초기화)", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
+            ModernButton btnClearDraft = new ModernButton("비우기", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
             btnClearDraft.setFont(uiFont(Font.BOLD, 11));
             btnClearDraft.setPreferredSize(new Dimension(106, 24));
             btnClearDraft.addActionListener(e -> {
@@ -2293,7 +2292,7 @@ public class ChronoCircleApp {
             RoundedCardPanel aiSection = new RoundedCardPanel(14, Color.WHITE, BORDER_COLOR);
             aiSection.setLayout(new BorderLayout(0, 10));
             aiSection.setBorder(BorderFactory.createCompoundBorder(
-                    new TitledBorder(new LineBorder(BORDER_COLOR, 1, true), " AI 자연어 빠른 등록 ",
+                    new TitledBorder(new LineBorder(BORDER_COLOR, 1, true), " AI 자연어 등록 ",
                             TitledBorder.LEFT, TitledBorder.TOP, uiFont(Font.BOLD, 13), TEXT_PRIMARY),
                     new EmptyBorder(8, 12, 12, 12)
             ));
@@ -2313,7 +2312,7 @@ public class ChronoCircleApp {
 
             JPanel aiBottomBar = new JPanel(new BorderLayout(0, 4));
             aiBottomBar.setOpaque(false);
-            btnParse = new ModernButton("⚡ AI 자동 분석 및 필드 완성",
+            btnParse = new ModernButton("🕊️ AI 자동 분석 및 필드 완성",
                     PRIMARY_LIGHT_BG, new Color(0xE0, 0xE7, 0xFF), INDIGO_PURPLE, PRIMARY_BORDER, 10);
             btnParse.setPreferredSize(new Dimension(480, 38));
             btnParse.setFont(uiFont(Font.BOLD, 13));
@@ -2343,7 +2342,7 @@ public class ChronoCircleApp {
             JPanel titleWrap = new JPanel(new BorderLayout(0, 2));
             titleWrap.setOpaque(false);
             titleField = createStyledTextField("");
-            lblTitleError = new JLabel("필수 입력 항목입니다: 일정 제목을 입력해 주세요.");
+            lblTitleError = new JLabel("*필수 입력 항목: 일정 제목을 입력해 주세요.");
             lblTitleError.setFont(uiFont(Font.BOLD, 11));
             lblTitleError.setForeground(DANGER_RED);
             lblTitleError.setVisible(false);
@@ -2527,7 +2526,7 @@ public class ChronoCircleApp {
                 return;
             }
             btnParse.setEnabled(false);
-            btnParse.setText("⏳ AI가 일정 문장을 분석 중입니다...");
+            btnParse.setText("🦭 AI가 일정 문장을 분석 중입니다...");
 
             SwingWorker<ParsedScheduleDTO, Void> worker = new SwingWorker<>() {
                 @Override
@@ -2539,7 +2538,7 @@ public class ChronoCircleApp {
                 @Override
                 protected void done() {
                     btnParse.setEnabled(true);
-                    btnParse.setText("⚡ AI 자동 분석 및 필드 완성");
+                    btnParse.setText("🕊️ AI 자동 분석 및 필드 완성");
                     try {
                         ParsedScheduleDTO parsed = get();
                         populateFromParsedDTO(parsed);
@@ -2692,7 +2691,7 @@ public class ChronoCircleApp {
 
         private void handleDelete() {
             int confirm = JOptionPane.showConfirmDialog(this,
-                    String.format("'%s' 일정을 정말 삭제하시겠습니까?\n삭제된 일정과 알림 대기열은 복구할 수 없습니다.", editingSchedule.title),
+                    String.format("'%s' 일정을 삭제하시겠습니까?\n삭제된 일정과 알림 대기열은 복구할 수 없습니다.", editingSchedule.title),
                     "일정 삭제 확인", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm == JOptionPane.YES_OPTION) {
                 controller.getRepository().deleteById(editingSchedule.id);
@@ -2748,7 +2747,7 @@ public class ChronoCircleApp {
     }
 
     // =========================================================================
-    // 12. PromptInputModal (Sequence Diagram image_1.png의 독립 AI 프롬프트 모달)
+    // 12. PromptInputModal (독립 AI 프롬프트 모달)
     // =========================================================================
     /**
      * [패키지 5: AI 자연어 일정 등록] 비정형 자연어 프롬프트 전용 빠른 입력 모달 다이얼로그입니다 (Sequence Diagram PromptInputModal 대응).
@@ -2765,11 +2764,11 @@ public class ChronoCircleApp {
             body.setBackground(Color.WHITE);
             body.setBorder(new EmptyBorder(20, 24, 16, 24));
 
-            JLabel title = new JLabel("💬 AI 자연어 한 줄 일정 등록");
+            JLabel title = new JLabel("💬 AI 자연어 일정 등록");
             title.setFont(uiFont(Font.BOLD, 17));
             title.setForeground(TEXT_PRIMARY);
 
-            JLabel sub = new JLabel("<html>일상적인 문장으로 일정을 입력하면 AI가 날짜·시간·장소·제목을 추출하여<br/>확인용 등록 폼에 자동으로 채워 넣습니다.</html>");
+            JLabel sub = new JLabel("<html>일상적인 문장으로 일정을 입력하면 AI가 날짜·시간·장소·제목을 추출하여<br/>등록 폼에 자동으로 입력합니다.</html>");
             sub.setFont(uiFont(Font.PLAIN, 12));
             sub.setForeground(TEXT_SECONDARY);
 
@@ -2816,7 +2815,7 @@ public class ChronoCircleApp {
             btnCancel.setPreferredSize(new Dimension(88, 36));
             btnCancel.addActionListener(e -> dispose());
 
-            ModernButton btnAnalyze = new ModernButton("⚡ AI 분석 및 등록 폼 열기", PRIMARY_BLUE, PRIMARY_BLUE_HOVER, Color.WHITE, null, 8);
+            ModernButton btnAnalyze = new ModernButton("🕊️ AI 분석 및 등록 폼 열기", PRIMARY_BLUE, PRIMARY_BLUE_HOVER, Color.WHITE, null, 8);
             btnAnalyze.setPreferredSize(new Dimension(190, 36));
             btnAnalyze.addActionListener(e -> {
                 String text = inputArea.getText().trim();
@@ -2982,7 +2981,7 @@ public class ChronoCircleApp {
     }
 
     // =========================================================================
-    // 14. MainFrame (프로그램 메인 프레임 - 와이어프레임 image_2.png + UX/UI 개선 집약)
+    // 14. MainFrame (프로그램 메인 프레임)
     // =========================================================================
     /**
      * [메인 애플리케이션 프레임] 상단 검색 및 [일|월|년] 뷰 전환 바, 중앙 대시보드 CardLayout, 우측 슬라이드 일과 타임라인 드로어, 하단 진행 일정 브리핑 카드를 통합 제어하는 메인 윈도우입니다.
@@ -3192,7 +3191,7 @@ public class ChronoCircleApp {
             bannerCard.setLayout(new BorderLayout(12, 0));
             bannerCard.setBorder(new EmptyBorder(8, 26, 8, 26));
 
-            lblBannerNotificationText = new JLabel("🔔 [스마트 알림] 예정된 일정이 곧 시작됩니다.");
+            lblBannerNotificationText = new JLabel("🔔 [알림] 예정된 일정이 곧 시작됩니다.");
             lblBannerNotificationText.setFont(uiFont(Font.BOLD, 13));
             lblBannerNotificationText.setForeground(INDIGO_PURPLE);
             lblBannerNotificationText.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
