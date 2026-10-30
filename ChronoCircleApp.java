@@ -18,34 +18,9 @@ import java.util.List;
 import java.util.regex.*;
 import java.util.stream.Collectors;
 
-/**
- * ChronoCircle - 24시간 원형 대시보드 기반 개인 일정 관리 프로그램
- *
- * 1. 24시간 원형 대시보드 (CircularCanvasPanel):
- *    - 24시간을 360도 원형 타임라인으로 시각화, 현재 진행 일정 12시 방향 상단 자동 정렬
- *    - 마우스 드래그 및 휠 스크롤을 통한 부드러운 관성/보간 회전 프리뷰
- *    - 회전 조작 시 실시간 타이머 자동 일시 정지(pauseAutoRefresh) 및 [현재 시각 동기화 (Refresh)] 버튼 노출
- *    - Refresh 클릭 시 부드러운 Ease-Out 애니메이션으로 현재 시각 복귀 및 실시간 트래킹 재개(resyncDashboardToCurrentTime)
- * 2. 사용성(UX):
- *    - 탭/드로어 개폐 애니메이션: 우측 '한눈에 보는 일과 &amp; 공강 브리핑' 슬라이드 탭, 하단 '현재 일정 상세/진행률' 확장 탭,
- *      상단 '스마트 인앱 알림 배너', 상단 '[일 / 월 / 년]' 세그먼트 캡슐 전환에 60FPS Ease-Out Cubic 애니메이션 적용
- *    - 한눈에 파악하기 쉬운 UI: 원형 시계 내부 콜아웃 카드 + 주/야간 시간대 배경 링 + 우측 타임라인 요약 리스트 연동
- *      (리스트 항목 호버/클릭 시 원형 시계가 해당 시간대로 부드럽게 회전하며 프리뷰 제공)
- *    - 월간/연간 달력 가독성 강화: 단순 개수 배지뿐 아니라 실제 일정 제목 캡슐(Pill) 표시,
- *      단일 클릭 시 우측 슬라이드 브리핑 연동, 더블 클릭 시 해당 일자 24시간 원형 대시보드로 즉시 전환
- * 3. AI 자연어 프롬프트 자동 파싱 (AIPromptParser &amp; SwingWorker):
- *    - 비정형 한국어 문장("내일 오후 3시 소프트웨어공학 연구실에서 캡스톤 프로젝트 최종 회의")을 백그라운드 스레드에서 분석
- *    - 외부 Gemini REST API 연동 지원 및 오프라인 환경에서도 즉시 작동하는 고정밀 한국어 자연어 파서 내장
- * 4. 무손실 임시 저장 매커니즘 (DraftSessionManager):
- *    - 일정 등록 중 실수로 창을 닫거나 이탈해도 입력 중인 데이터를 메모리에 실시간 캐싱 및 재진입 시 복원 배너 제공
- * 5. 알림 시스템 (SystemTimer &amp; NotificationDispatcher):
- *    - 분/시/일 단위 사전 알림 및 반복 주기 설정, 시간 중복(Conflict) 감지 다이얼로그, 인앱 슬라이드 알림 배너 &amp; 트레이 알림
- */
+/** 24시간 원형 대시보드 기반 개인 일정 관리 프로그램 ChronoCircle. */
 public class ChronoCircleApp {
 
-    // =========================================================================
-    // 컬러 팔레트 및 타이포그래피 디자인 시스템 (Figma 와이어프레임 기반 모던 테마)
-    // =========================================================================
     public static final Color BG_MAIN = new Color(0xF8, 0xFA, 0xFC);
     public static final Color BG_SURFACE = Color.WHITE;
     public static final Color BG_SUBTLE = new Color(0xF1, 0xF5, 0xF9);
@@ -69,16 +44,17 @@ public class ChronoCircleApp {
     public static final Color SATURDAY_BLUE = new Color(0x1D, 0x5B, 0x9B);
 
     public static final Color[] SCHEDULE_PALETTE = {
-        new Color(0x43, 0x61, 0xEE), // Royal Blue
-        new Color(0x7C, 0x3A, 0xED), // Violet
-        new Color(0x0D, 0x94, 0x88), // Teal
-        new Color(0xEA, 0x58, 0x0C), // Coral Orange
-        new Color(0xDB, 0x27, 0x77), // Rose Pink
-        new Color(0x25, 0x63, 0xEB)  // Cobalt
+        new Color(0x43, 0x61, 0xEE),
+        new Color(0x7C, 0x3A, 0xED),
+        new Color(0x0D, 0x94, 0x88),
+        new Color(0xEA, 0x58, 0x0C),
+        new Color(0xDB, 0x27, 0x77),
+        new Color(0x25, 0x63, 0xEB)
     };
 
     private static String fontFamily = "Dialog";
 
+    /** Look and Feel을 설정하고, 시스템에 설치된 한글 글꼴을 찾아 기본 UI 글꼴로 지정한다. */
     public static void initFontAndLook() {
         try {
             UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
@@ -112,13 +88,7 @@ public class ChronoCircleApp {
         return new Font(fontFamily, style, size);
     }
 
-    // =========================================================================
-    // 1. DTO 및 도메인 모델 클래스
-    // =========================================================================
-
-    /**
-     * 일정 엔티티 및 전송 객체 (ScheduleDTO / ScheduleEntity 통합)
-     */
+    /** 일정 한 건의 정보(제목, 시작/종료 일시, 장소, 설명, 알림 설정)를 담는 객체. */
     public static class ScheduleDTO implements Serializable {
         private static final long serialVersionUID = 1L;
         public String id;
@@ -168,6 +138,7 @@ public class ChronoCircleApp {
             return c;
         }
 
+        /** 시작 시각과 사전 알림 시간으로 다음 알림 시각을 다시 계산한다. */
         public void recalculateNextNotificationTime() {
             if (notificationEnabled && startDateTime != null) {
                 this.nextNotificationTime = startDateTime.minusMinutes(notificationLeadMinutes);
@@ -176,6 +147,10 @@ public class ChronoCircleApp {
             }
         }
 
+        /**
+         * @param date 확인할 날짜
+         * @return 일정 기간이 해당 날짜를 포함하면 true
+         */
         public boolean occursOn(LocalDate date) {
             if (startDateTime == null || endDateTime == null) return false;
             LocalDate s = startDateTime.toLocalDate();
@@ -183,6 +158,10 @@ public class ChronoCircleApp {
             return !date.isBefore(s) && !date.isAfter(e);
         }
 
+        /**
+         * @param dt 기준 일시
+         * @return 시작 &lt;= dt &lt; 종료이면 true
+         */
         public boolean isOngoingAt(LocalDateTime dt) {
             if (startDateTime == null || endDateTime == null) return false;
             return !dt.isBefore(startDateTime) && dt.isBefore(endDateTime);
@@ -199,7 +178,7 @@ public class ChronoCircleApp {
         }
 
         public String getNotificationSummary() {
-            if (!notificationEnabled) return "알림 off";
+            if (!notificationEnabled) return "알림 사용 안 함";
             String lead = formatMinutes(notificationLeadMinutes) + (notificationLeadMinutes == 0 ? " (정각)" : " 전");
             String rep = repeatIntervalMinutes > 0 ? " / " + formatMinutes(repeatIntervalMinutes) + "마다 반복" : " / 반복 없음";
             return lead + rep;
@@ -213,9 +192,7 @@ public class ChronoCircleApp {
         }
     }
 
-    /**
-     * AI 자연어 프롬프트 파싱 결과 DTO (Function Specification: ParsedScheduleDTO)
-     */
+    /** 등록 폼을 채우는 데 쓰는 자연어 문장 분석 결과. */
     public static class ParsedScheduleDTO {
         public String title;
         public LocalDateTime startDateTime;
@@ -237,9 +214,7 @@ public class ChronoCircleApp {
         }
     }
 
-    /**
-     * 원형 대시보드 렌더링용 세그먼트 (Function Specification: CircularScheduleSegment)
-     */
+    /** 원형 대시보드에 그릴 일정 호(Arc) 하나의 각도와 표시 상태. */
     public static class CircularScheduleSegment {
         public final ScheduleDTO schedule;
         public final double rawStartAngleDeg;
@@ -263,9 +238,7 @@ public class ChronoCircleApp {
         }
     }
 
-    /**
-     * 키워드 검색 결과 요약 객체 (Function Specification: ScheduleSummary)
-     */
+    /** 키워드 검색 결과 목록에 표시할 일정 요약. */
     public static class ScheduleSummary {
         public final String scheduleId;
         public final String title;
@@ -292,17 +265,17 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 2. DraftSessionManager (무손실 세션 임시 보존 매커니즘 - REQ 1.3 & UC-04)
-    // =========================================================================
-    /**
-     * [패키지 1: 일정 기본 관리] 일정 작성 중 비정상 종료나 화면 이탈 시 작성 중인 폼 데이터를 인메모리 세션 캐시에 보존 및 복원하는 매니저 클래스입니다 (REQ 1.3, UC-04).
-     */
+    /** 작성 중인 일정 폼 내용을 메모리에 임시 보관한다(프로그램이 종료되면 사라짐). */
     public static class DraftSessionManager {
         private final Map<String, ScheduleDTO> sessionCache = new HashMap<>();
         private static final String ACTIVE_DRAFT_KEY = "CURRENT_FORM_DRAFT";
         private LocalDateTime lastSavedAt;
 
+        /**
+         * 제목, 장소, 설명 중 하나라도 입력돼 있으면 사본을 보관하고, 모두 비어 있으면 보관본을 지운다.
+         *
+         * @param draft 현재 폼 내용
+         */
         public void saveDraft(ScheduleDTO draft) {
             if (draft == null) return;
             boolean hasContent = (draft.title != null && !draft.title.trim().isEmpty())
@@ -336,18 +309,13 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 3. ScheduleRepository (일정 영속성 저장소 + 초기 데모 데이터 구성)
-    // =========================================================================
-    /**
-     * [패키지 1: 일정 기본 관리] 일정 엔티티의 영구 저장(CRUD), 날짜별/기간별 필터링, 시간 중복(Conflict) 검사 및 로컬 디스크 직렬화를 담당하는 저장소 클래스입니다 (REQ 1.1, 3.1, 6.1).
-     */
+    /** 일정 목록을 관리하고 사용자 홈 폴더의 <code>.chronocircle_schedules_v2.ser</code> 파일에 직렬화해 저장한다. */
     public static class ScheduleRepository {
         private final List<ScheduleDTO> schedules = new ArrayList<>();
         private final Path storagePath;
 
         public ScheduleRepository() {
-            this.storagePath = Paths.get(System.getProperty("user.home"), ".chronocircle_schedules_v1.ser");
+            this.storagePath = Paths.get(System.getProperty("user.home"), ".chronocircle_schedules_v2.ser");
             if (!loadFromDisk()) {
                 seedInitialData();
                 saveToDisk();
@@ -386,21 +354,25 @@ public class ChronoCircleApp {
         }
 
         private void seedDaySchedules(LocalDate date) {
+            addSample(date, 8, 30, 9, 30,
+                    "모닝 러닝 & 스트레칭", "대운동장 트랙",
+                    "상쾌한 하루 시작을 위한 5km 조깅 및 코어 스트레칭", false, 10, 0, 3);
+
             addSample(date, 11, 0, 13, 0,
                     "소프트웨어공학 특강", "공대 7호관",
                     "객체지향 설계 원칙(SOLID) 및 UML 다이어그램 실무 적용 특강", true, 30, 0, 0);
 
-            addSample(date, 15, 0, 16, 30,
+            addSample(date, 13, 30, 15, 0,
+                    "데이터베이스 시스템 실습", "전산실습실 301호",
+                    "트랜잭션 격리 수준 실험 및 실행 계획(Execution Plan) 분석 실습", true, 15, 0, 2);
+
+            addSample(date, 15, 30, 17, 0,
                     "캡스톤 프로젝트 중간 회의", "소프트웨어공학 연구실",
                     "Java Swing 원형 타임라인 렌더링 및 자연어 프롬프트 파서 코드 리뷰", true, 15, 0, 1);
 
             addSample(date, 19, 0, 21, 0,
                     "알고리즘 스터디", "중앙도서관 그룹스터디룸 B",
-                    "그래프 탐색(BFS/DFS) 및 다이나믹 프로그래밍 실전 문제 풀이", true, 30, 0, 2);
-
-            addSample(date, 8, 30, 9, 30,
-                    "모닝 러닝 & 스트레칭", "대운동장 트랙",
-                    "상쾌한 하루 시작을 위한 5km 조깅 및 코어 스트레칭", false, 10, 0, 3);
+                    "그래프 탐색(BFS/DFS) 및 다이나믹 프로그래밍 실전 문제 풀이", true, 30, 0, 4);
         }
 
         private void addSample(LocalDate date, int sh, int sm, int eh, int em,
@@ -423,6 +395,10 @@ public class ChronoCircleApp {
                     .collect(Collectors.toList());
         }
 
+        /**
+         * @param date 조회할 날짜
+         * @return 해당 날짜에 걸친 일정 목록 (시작 시각 순)
+         */
         public synchronized List<ScheduleDTO> findByDate(LocalDate date) {
             return schedules.stream()
                     .filter(s -> s.occursOn(date))
@@ -438,6 +414,11 @@ public class ChronoCircleApp {
                     .map(ScheduleDTO::copy);
         }
 
+        /**
+         * 같은 ID의 일정이 있으면 교체하고, 없으면 추가한 뒤 파일에 저장한다.
+         *
+         * @param dto 저장할 일정
+         */
         public synchronized void upsert(ScheduleDTO dto) {
             ScheduleDTO copy = dto.copy();
             copy.recalculateNextNotificationTime();
@@ -461,6 +442,14 @@ public class ChronoCircleApp {
             return removed;
         }
 
+        /**
+         * 주어진 시간대와 겹치는 일정을 찾는다.
+         *
+         * @param start 시작 일시
+         * @param end 종료 일시
+         * @param excludeId 검사에서 제외할 일정 ID (수정 중인 자기 자신)
+         * @return 시간이 겹치는 일정 목록
+         */
         public synchronized List<ScheduleDTO> findOverlapping(LocalDateTime start, LocalDateTime end, String excludeId) {
             return schedules.stream()
                     .filter(s -> !Objects.equals(s.id, excludeId))
@@ -490,14 +479,24 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 4. AIPromptParser (자연어 프롬프트 분석 엔진 - 한국어 NLP + Gemini REST API 지원)
-    // =========================================================================
     /**
-     * [패키지 5: AI 자연어 일정 등록] 비정형 한국어 자연어 프롬프트에서 날짜, 시작/종료 시각, 장소, 제목을 추출하여 정형화된 DTO로 변환하는 AI 파서 클래스입니다 (REQ 5.1, 5.2, UC-11).
+     * 한국어 자연어 문장에서 날짜, 시간, 장소, 제목을 추출하는 파서.
+     *
+     * <p>Gemini API 키가 있으면 Gemini(LLM)에 JSON 형식 추출을 요청해 그 결과를 쓴다.
+     * 키가 없거나, 호출이 실패하거나, 응답이 형식에 맞지 않으면 내장 정규식 규칙으로 분석한다.</p>
+     *
+     * <p>키는 환경 변수 <code>GEMINI_API_KEY</code> 또는 시스템 속성 <code>gemini.api.key</code>로 지정하고,
+     * 모델은 <code>GEMINI_MODEL</code>(기본값 {@value #DEFAULT_MODEL})로 바꿀 수 있다.</p>
      */
     public static class AIPromptParser {
+        public static final String DEFAULT_MODEL = "gemini-3.8-flash";
+        private static final String API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
 
+        /**
+         * @param promptText 사용자가 입력한 문장
+         * @param referenceDate "내일", "다음 주" 같은 상대 날짜의 기준일
+         * @return 분석 결과. {@link ParsedScheduleDTO#parseConfidenceNote}에 어떤 방식으로 분석했는지 적힌다
+         */
         public ParsedScheduleDTO extractScheduleData(String promptText, LocalDate referenceDate) {
             if (promptText == null || promptText.trim().isEmpty()) {
                 return new ParsedScheduleDTO("", LocalDateTime.of(referenceDate, LocalTime.of(15, 0)),
@@ -505,37 +504,150 @@ public class ChronoCircleApp {
             }
 
             String text = promptText.trim();
-            String apiKey = System.getenv("GEMINI_API_KEY");
-            if (apiKey != null && !apiKey.trim().isEmpty()) {
-                try {
-                    ParsedScheduleDTO apiResult = callGeminiApi(text, referenceDate, apiKey.trim());
-                    if (apiResult != null) return apiResult;
-                } catch (Exception ignored) {}
+            String apiKey = resolveApiKey();
+            if (apiKey == null) {
+                return parseKoreanNaturalLanguage(text, referenceDate);
             }
-
-            return parseKoreanNaturalLanguage(text, referenceDate);
+            try {
+                return callGeminiApi(text, referenceDate, apiKey);
+            } catch (Exception e) {
+                ParsedScheduleDTO fallback = parseKoreanNaturalLanguage(text, referenceDate);
+                fallback.parseConfidenceNote = "Gemini 분석 실패(" + e.getMessage() + "), 내장 파서 사용 — " + fallback.parseConfidenceNote;
+                return fallback;
+            }
         }
 
-        private ParsedScheduleDTO callGeminiApi(String promptText, LocalDate refDate, String apiKey) throws Exception {
-            URL url = new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        private static String resolveApiKey() {
+            String key = System.getProperty("gemini.api.key");
+            if (key == null || key.trim().isEmpty()) key = System.getenv("GEMINI_API_KEY");
+            return (key == null || key.trim().isEmpty()) ? null : key.trim();
+        }
+
+        private static String resolveModel() {
+            String model = System.getenv("GEMINI_MODEL");
+            return (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model.trim();
+        }
+
+        private ParsedScheduleDTO callGeminiApi(String promptText, LocalDate refDate, String apiKey) throws IOException {
+            String model = resolveModel();
+            HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE + model + ":generateContent").openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(3500);
-            conn.setReadTimeout(5000);
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(20000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            conn.setRequestProperty("x-goog-api-key", apiKey);
 
-            String sysPrompt = "기준일(" + refDate + ")을 바탕으로 다음 문장에서 일정 정보를 추출해 한 줄(title|YYYY-MM-DD|HH:mm|HH:mm|location)로만 답하세요: " + promptText;
-            String payload = "{\"contents\":[{\"parts\":[{\"text\":\"" + sysPrompt.replace("\"", "\\\"") + "\"}]}]}";
             try (OutputStream os = conn.getOutputStream()) {
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
+                os.write(buildGeminiRequest(promptText, refDate).getBytes(StandardCharsets.UTF_8));
             }
-            if (conn.getResponseCode() == 200) {
-                return parseKoreanNaturalLanguage(promptText, refDate);
+            int code = conn.getResponseCode();
+            InputStream in = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String body = in == null ? "" : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            if (code != 200) {
+                throw new IOException("HTTP " + code);
             }
-            return null;
+            ParsedScheduleDTO result = parseGeminiResponse(body, promptText, refDate);
+            result.parseConfidenceNote = "Gemini(" + model + ") " + result.parseConfidenceNote;
+            return result;
         }
 
+        static String buildGeminiRequest(String promptText, LocalDate refDate) {
+            String instruction = "너는 한국어 일정 문장에서 일정 정보를 추출하는 도우미다.\n"
+                    + "기준일은 " + refDate + " (" + refDate.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.KOREAN) + ")이다.\n"
+                    + "'내일', '다음 주 수요일' 같은 상대 날짜는 기준일로부터 계산한다.\n"
+                    + "date는 YYYY-MM-DD, startTime과 endTime은 24시간제 HH:mm로 쓴다.\n"
+                    + "시작 시각이 없으면 15:00, 종료 시각이나 소요 시간이 없으면 endTime은 빈 문자열로 둔다.\n"
+                    + "title에는 날짜, 시간, 장소, '등록해줘' 같은 요청 표현을 빼고 일정 이름만 쓴다. 장소가 없으면 location은 빈 문자열이다.\n"
+                    + "문장: " + promptText;
+            return "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":" + jsonQuote(instruction) + "}]}],"
+                    + "\"generationConfig\":{"
+                    + "\"responseMimeType\":\"application/json\","
+                    + "\"responseSchema\":{\"type\":\"OBJECT\",\"properties\":{"
+                    + "\"title\":{\"type\":\"STRING\"},\"date\":{\"type\":\"STRING\"},"
+                    + "\"startTime\":{\"type\":\"STRING\"},\"endTime\":{\"type\":\"STRING\"},"
+                    + "\"location\":{\"type\":\"STRING\"}},"
+                    + "\"required\":[\"title\",\"date\",\"startTime\",\"endTime\",\"location\"]}}}";
+        }
+
+        /**
+         * generateContent 응답 본문에서 일정 정보를 꺼낸다.
+         *
+         * @param body Gemini 응답 JSON
+         * @param rawPrompt 사용자가 입력한 원문
+         * @param refDate 기준일 (날짜를 못 읽었을 때 사용)
+         * @return 분석 결과
+         * @throws IOException 응답 구조나 날짜·시간 형식이 맞지 않을 때
+         */
+        static ParsedScheduleDTO parseGeminiResponse(String body, String rawPrompt, LocalDate refDate) throws IOException {
+            Object root = MiniJson.parse(body);
+            Object text = MiniJson.path(root, "candidates", 0, "content", "parts", 0, "text");
+            if (!(text instanceof String)) {
+                throw new IOException("응답에 결과 텍스트가 없음");
+            }
+            Object data = MiniJson.parse((String) text);
+            if (!(data instanceof Map)) {
+                throw new IOException("결과가 JSON 객체가 아님");
+            }
+            Map<?, ?> m = (Map<?, ?>) data;
+            String title = str(m.get("title"));
+            String location = str(m.get("location"));
+            LocalDate date;
+            LocalTime start;
+            try {
+                date = str(m.get("date")).isEmpty() ? refDate : LocalDate.parse(str(m.get("date")));
+                start = LocalTime.parse(str(m.get("startTime")).isEmpty() ? "15:00" : str(m.get("startTime")));
+            } catch (Exception e) {
+                throw new IOException("날짜/시간 형식 오류");
+            }
+            LocalDateTime startDT = LocalDateTime.of(date, start);
+            LocalDateTime endDT = startDT.plusHours(1);
+            if (!str(m.get("endTime")).isEmpty()) {
+                try {
+                    LocalDateTime e = LocalDateTime.of(date, LocalTime.parse(str(m.get("endTime"))));
+                    if (e.isAfter(startDT)) endDT = e;
+                } catch (Exception ignored) {}
+            }
+            if (title.isEmpty()) {
+                title = location.isEmpty() ? "새 스마트 일정" : location + " 미팅";
+            }
+            String note = String.format("분석 완료: %s %s (%s)",
+                    date.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")),
+                    start.format(DateTimeFormatter.ofPattern("HH:mm")),
+                    location.isEmpty() ? "장소 미지정" : location);
+            return new ParsedScheduleDTO(title, startDT, endDT, location,
+                    "자연어 입력 원문: \"" + rawPrompt + "\"", rawPrompt, note);
+        }
+
+        private static String str(Object o) {
+            return o == null ? "" : o.toString().trim();
+        }
+
+        private static String jsonQuote(String s) {
+            StringBuilder sb = new StringBuilder("\"");
+            for (char c : s.toCharArray()) {
+                switch (c) {
+                    case '"': sb.append("\\\""); break;
+                    case '\\': sb.append("\\\\"); break;
+                    case '\n': sb.append("\\n"); break;
+                    case '\r': sb.append("\\r"); break;
+                    case '\t': sb.append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                        else sb.append(c);
+                }
+            }
+            return sb.append('"').toString();
+        }
+
+        /**
+         * 날짜, 시간 범위, 소요 시간, 장소 순으로 문장에서 떼어 내고, 남은 문자열을 제목으로 쓴다.
+         * 시간이 없으면 15시, 소요 시간이 없으면 1시간으로 정한다.
+         *
+         * @param raw 원문
+         * @param baseDate 상대 날짜의 기준일
+         * @return 분석 결과
+         */
         public ParsedScheduleDTO parseKoreanNaturalLanguage(String raw, LocalDate baseDate) {
             String working = raw.trim();
             LocalDate targetDate = baseDate;
@@ -670,13 +782,13 @@ public class ChronoCircleApp {
                 endDT = startDT.plusMinutes(durationMin);
             }
 
-            String note = String.format("AI 파싱 완료: %s %s (%s)",
+            String note = String.format("내장 파서 분석 완료: %s %s (%s)",
                     targetDate.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")),
                     sTime.format(DateTimeFormatter.ofPattern("HH:mm")),
                     location.isEmpty() ? "장소 미지정" : location);
 
             return new ParsedScheduleDTO(title, startDT, endDT, location,
-                    "AI 자연어 프롬프트 원문: \"" + raw + "\"", raw, note);
+                    "자연어 입력 원문: \"" + raw + "\"", raw, note);
         }
 
         private int normalizeHour(String ampm, int hour) {
@@ -694,12 +806,109 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 5. SystemTimer (실시간 대시보드 추적 및 백그라운드 알림 스케줄러)
-    // =========================================================================
-    /**
-     * [패키지 2 &amp; 4: 스마트 알림 및 실시간 원형 대시보드] 1초 주기 Swing Timer 기반으로 실시간 대시보드 자동 회전 및 백그라운드 알림 스케줄링을 제어하는 타이머 클래스입니다 (REQ 2.1, 4.3, 4.4).
-     */
+    /** Gemini 응답을 읽기 위한 최소 JSON 파서. 객체는 Map, 배열은 List, 숫자는 Double로 돌려준다. */
+    static final class MiniJson {
+        private final String s;
+        private int i;
+
+        private MiniJson(String s) {
+            this.s = s;
+        }
+
+        static Object parse(String text) throws IOException {
+            MiniJson p = new MiniJson(text);
+            Object v = p.value();
+            p.ws();
+            if (p.i != p.s.length()) throw new IOException("JSON 뒤에 불필요한 문자");
+            return v;
+        }
+
+        /** 키(String)와 인덱스(Integer)를 차례로 따라가 값을 찾는다. 없으면 null. */
+        static Object path(Object node, Object... keys) {
+            for (Object k : keys) {
+                if (k instanceof String && node instanceof Map) node = ((Map<?, ?>) node).get(k);
+                else if (k instanceof Integer && node instanceof List && ((List<?>) node).size() > (Integer) k) node = ((List<?>) node).get((Integer) k);
+                else return null;
+            }
+            return node;
+        }
+
+        private void ws() {
+            while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+        }
+
+        private Object value() throws IOException {
+            ws();
+            if (i >= s.length()) throw new IOException("JSON이 끝남");
+            char c = s.charAt(i);
+            if (c == '{') {
+                Map<String, Object> m = new LinkedHashMap<>();
+                i++;
+                ws();
+                if (s.charAt(i) == '}') { i++; return m; }
+                while (true) {
+                    ws();
+                    String k = string();
+                    ws();
+                    expect(':');
+                    m.put(k, value());
+                    ws();
+                    if (s.charAt(i) == ',') { i++; continue; }
+                    expect('}');
+                    return m;
+                }
+            }
+            if (c == '[') {
+                List<Object> l = new ArrayList<>();
+                i++;
+                ws();
+                if (s.charAt(i) == ']') { i++; return l; }
+                while (true) {
+                    l.add(value());
+                    ws();
+                    if (s.charAt(i) == ',') { i++; continue; }
+                    expect(']');
+                    return l;
+                }
+            }
+            if (c == '"') return string();
+            if (s.startsWith("true", i)) { i += 4; return Boolean.TRUE; }
+            if (s.startsWith("false", i)) { i += 5; return Boolean.FALSE; }
+            if (s.startsWith("null", i)) { i += 4; return null; }
+            int st = i;
+            while (i < s.length() && "+-0123456789.eE".indexOf(s.charAt(i)) >= 0) i++;
+            if (st == i) throw new IOException("JSON 형식 오류 (위치 " + i + ")");
+            return Double.parseDouble(s.substring(st, i));
+        }
+
+        private String string() throws IOException {
+            expect('"');
+            StringBuilder sb = new StringBuilder();
+            while (i < s.length()) {
+                char c = s.charAt(i++);
+                if (c == '"') return sb.toString();
+                if (c != '\\') { sb.append(c); continue; }
+                char e = s.charAt(i++);
+                switch (e) {
+                    case 'n': sb.append('\n'); break;
+                    case 't': sb.append('\t'); break;
+                    case 'r': sb.append('\r'); break;
+                    case 'b': sb.append('\b'); break;
+                    case 'f': sb.append('\f'); break;
+                    case 'u': sb.append((char) Integer.parseInt(s.substring(i, i + 4), 16)); i += 4; break;
+                    default: sb.append(e);
+                }
+            }
+            throw new IOException("문자열이 닫히지 않음");
+        }
+
+        private void expect(char c) throws IOException {
+            if (i >= s.length() || s.charAt(i) != c) throw new IOException("'" + c + "' 필요 (위치 " + i + ")");
+            i++;
+        }
+    }
+
+    /** 대시보드 갱신과 알림 검사를 1초마다 구동하는 Swing 타이머로, 테스트용 시각 이동(시뮬레이션) 기능도 제공한다. */
     public static class SystemTimer {
         private final javax.swing.Timer swingTimer;
         private boolean autoRefreshPaused = false;
@@ -721,10 +930,12 @@ public class ChronoCircleApp {
             }
         }
 
+        /** 사용자가 원형 대시보드를 돌리는 동안 현재 시각 자동 추적을 멈춘다. */
         public void pauseAutoRefresh() {
             this.autoRefreshPaused = true;
         }
 
+        /** 현재 시각 자동 추적을 다시 시작한다. */
         public void resumeAutoRefresh() {
             this.autoRefreshPaused = false;
             if (!swingTimer.isRunning()) {
@@ -736,6 +947,7 @@ public class ChronoCircleApp {
             return autoRefreshPaused;
         }
 
+        /** @return 시뮬레이션 오프셋이 반영된 현재 일시 */
         public LocalDateTime now() {
             return LocalDateTime.now().plus(simulationOffset);
         }
@@ -760,12 +972,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 6. 핵심 비즈니스 컨트롤러 (문서의 6대 Function Specification 완벽 구현)
-    // =========================================================================
-    /**
-     * [핵심 비즈니스 컨트롤러] UI 뷰 계층과 도메인/저장소 계층을 중재하며 Function Specification에 정의된 6대 핵심 비즈니스 로직을 수행하는 컨트롤러 클래스입니다.
-     */
+    /** 화면과 저장소·파서 사이를 연결하며 기능 명세의 핵심 함수 6개를 구현하는 컨트롤러. */
     public static class ScheduleController {
         private final ScheduleRepository repository;
         private final DraftSessionManager draftManager;
@@ -792,10 +999,10 @@ public class ChronoCircleApp {
         }
 
         /**
-         * [Function Spec #1] 비정형 자연어 프롬프트에서 핵심 일정 메타데이터를 파싱하여 구조화된 전송 객체로 변환하는 함수입니다 (REQ 5.1, UC-11).
+         * 자연어 문장을 분석해 일정 정보로 변환한다. 선택된 날짜를 기준일로 쓴다.
          *
-         * @param promptText 사용자가 입력한 비정형 구어체 문장 (예: "내일 오후 3시 회의실 A에서 팀 프로젝트 최종 회의")
-         * @return 파싱된 일정 제목, 시작 일시, 종료 일시, 장소, 상세 메모 속성을 담은 {@link ParsedScheduleDTO} 객체
+         * @param promptText 예: "내일 오후 3시 회의실 A에서 팀 프로젝트 회의"
+         * @return 제목, 시작/종료 일시, 장소, 설명을 담은 분석 결과
          */
         public ParsedScheduleDTO parseNaturalLanguagePrompt(String promptText) {
             LocalDate baseDate = (mainFrame != null) ? mainFrame.getSelectedDate() : LocalDate.now();
@@ -803,11 +1010,11 @@ public class ChronoCircleApp {
         }
 
         /**
-         * [Function Spec #2] 신규 일정을 등록하거나 기존 일정을 수정하며, 임시 작성 세션을 보존하는 영속성 처리 함수입니다 (REQ 1.1~1.3, UC-01, UC-02, UC-04).
+         * 일정을 저장하거나 작성 중인 내용을 임시 보관한다.
          *
-         * @param scheduleData 저장 또는 임시 캐싱할 일정 세부 정보 객체 ({@link ScheduleDTO})
-         * @param isDraft 임시 저장 모드 여부를 결정하는 플래그 (true: DraftSessionManager 캐싱, false: 정합성 검증 후 영구 저장)
-         * @return 저장 또는 캐싱 작업 성공 시 true, 유효성 검증 실패 시 false
+         * @param scheduleData 저장할 일정
+         * @param isDraft true면 검증 없이 임시 보관, false면 제목과 시간을 검증한 뒤 저장하고 임시 보관본을 지운다
+         * @return 저장(또는 임시 보관)에 성공하면 true, 검증에 실패하면 false
          */
         public boolean saveOrUpdateSchedule(ScheduleDTO scheduleData, boolean isDraft) {
             if (scheduleData == null) return false;
@@ -833,11 +1040,11 @@ public class ChronoCircleApp {
         }
 
         /**
-         * [Function Spec #3] 24시간 원형 계획표 캔버스에 렌더링할 부채꼴 호(Arc) 좌표 및 실시간 회전 각도를 계산하는 함수입니다 (REQ 4.1~4.3, UC-09).
+         * 하루 1,440분을 360도로 환산해 각 일정의 호 시작 각도와 중심각을 계산한다.
          *
-         * @param targetDate 조회 대상 일자 ({@link LocalDate})
-         * @param currentTime 현재 시스템 시각 ({@link LocalTime})
-         * @return 각 일정의 시작 각도, 중심각, 회전 오프셋, 진행 중 여부, 색상 정보를 포함하는 {@link CircularScheduleSegment} 리스트
+         * @param targetDate 조회할 날짜
+         * @param currentTime 진행 중 여부를 판단할 기준 시각
+         * @return 일정별 각도, 색상, 진행 여부 목록
          */
         public List<CircularScheduleSegment> calculateCircularSegments(LocalDate targetDate, LocalTime currentTime) {
             List<ScheduleDTO> daySchedules = repository.findByDate(targetDate);
@@ -860,6 +1067,7 @@ public class ChronoCircleApp {
                 double endMin = effectiveEnd.getHour() * 60.0 + effectiveEnd.getMinute();
                 double durationMin = Math.max(15.0, endMin - startMin);
 
+                // Arc2D 기준 0시는 아래쪽(270°), 음수 sweep으로 시계 방향 진행
                 double startAngle = 270.0 - (startMin / 1440.0) * 360.0;
                 double sweepAngle = -(durationMin / 1440.0) * 360.0;
 
@@ -876,10 +1084,10 @@ public class ChronoCircleApp {
         }
 
         /**
-         * [Function Spec #4] 사용자의 수동 탐색으로 인해 중단되었던 실시간 자동 갱신을 재개하고 캔버스를 현재 시각 위치로 복귀시키는 함수입니다 (REQ 4.4, UC-10).
+         * [Refresh] 버튼을 누르면 자동 추적을 재개하고 원형 대시보드를 현재 시각 위치로 되돌린다.
          *
-         * @param canvas 원형 계획표 Swing 커스텀 캔버스 패널 ({@link CircularCanvasPanel})
-         * @param timer 실시간 갱신 및 백그라운드 스케줄링 타이머 ({@link SystemTimer})
+         * @param canvas 원형 대시보드 패널
+         * @param timer 실시간 갱신 타이머
          */
         public void resyncDashboardToCurrentTime(CircularCanvasPanel canvas, SystemTimer timer) {
             if (timer != null) {
@@ -894,10 +1102,10 @@ public class ChronoCircleApp {
         }
 
         /**
-         * [Function Spec #5] 시스템 시각을 감시하여 알림 예정 시각에 도달한 일정에 대해 푸시 알림 이벤트를 발생시키는 함수입니다 (REQ 2.1~2.3, UC-05, UC-06).
+         * 알림 시각이 된 일정에 알림을 보낸다. 같은 알림은 한 번만 보내며, 반복 알림이면 다음 알림 시각을 갱신한다.
          *
-         * @param currentDateTime 백그라운드 스케줄러가 주기적으로 전달하는 시스템 현재 일시 ({@link LocalDateTime})
-         * @return 성공적으로 알림이 발송된 일정의 총 개수
+         * @param currentDateTime 현재 일시 (타이머가 1초마다 전달)
+         * @return 이번에 보낸 알림 수
          */
         public int checkAndDispatchNotifications(LocalDateTime currentDateTime) {
             List<ScheduleDTO> all = repository.findAll();
@@ -932,12 +1140,12 @@ public class ChronoCircleApp {
         }
 
         /**
-         * [Function Spec #6] 지정된 기간 내에서 키워드를 포함하는 일정을 고속 인덱싱 탐색하여 목록으로 반환하는 함수입니다 (REQ 6.1, UC-12).
+         * 제목, 장소, 설명에 키워드가 들어간 일정을 대소문자 구분 없이 찾는다.
          *
-         * @param keyword 검색창 입력 문자열 (제목, 장소, 상세 설명 대상 대소문자 무시 매칭)
-         * @param startDate 검색 시작 일자 ({@link LocalDate})
-         * @param endDate 검색 종료 일자 ({@link LocalDate})
-         * @return 시간순으로 정렬된 검색 결과 일정 요약 목록 ({@link ScheduleSummary} 리스트)
+         * @param keyword 검색어
+         * @param startDate 검색 시작일 (null이면 제한 없음)
+         * @param endDate 검색 종료일 (null이면 제한 없음)
+         * @return 시작 시각 순으로 정렬된 검색 결과. 검색어가 비어 있으면 빈 목록
          */
         public List<ScheduleSummary> searchSchedulesByKeyword(String keyword, LocalDate startDate, LocalDate endDate) {
             if (keyword == null || keyword.trim().isEmpty()) {
@@ -961,22 +1169,27 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 7. 커스텀 UI 위젯 & 애니메이션 컴포넌트
-    // =========================================================================
-
-    /**
-     * 안티앨리어싱 라운드 보더 및 배경을 렌더링하는 커스텀 Swing 카드 컨테이너입니다.
-     */
+    /** 둥근 모서리 배경과 테두리를 그리는 카드형 패널. */
     public static class RoundedCardPanel extends JPanel {
         private final int radius;
         private Color bgColor;
         private Color borderColor;
+        private float borderWidth = 1.2f;
+        private Color accentStripeColor = null;
+        private boolean doubleFrame = false;
 
         public RoundedCardPanel(int radius, Color bgColor, Color borderColor) {
+            this(radius, bgColor, borderColor, 1.2f, null, false);
+        }
+
+        public RoundedCardPanel(int radius, Color bgColor, Color borderColor,
+                                float borderWidth, Color accentStripeColor, boolean doubleFrame) {
             this.radius = radius;
             this.bgColor = bgColor;
             this.borderColor = borderColor;
+            this.borderWidth = borderWidth;
+            this.accentStripeColor = accentStripeColor;
+            this.doubleFrame = doubleFrame;
             setOpaque(false);
         }
 
@@ -992,23 +1205,44 @@ public class ChronoCircleApp {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             int w = getWidth();
             int h = getHeight();
+            int inset = doubleFrame ? 2 : 0;
+
+            if (doubleFrame && borderColor != null) {
+                g2.setColor(new Color(borderColor.getRed(), borderColor.getGreen(), borderColor.getBlue(), 42));
+                g2.setStroke(new BasicStroke(4.5f));
+                g2.drawRoundRect(1, 1, w - 3, h - 3, radius + 2, radius + 2);
+            }
+
             if (bgColor != null) {
                 g2.setColor(bgColor);
-                g2.fillRoundRect(0, 0, w - 1, h - 1, radius, radius);
+                g2.fillRoundRect(inset, inset, w - 1 - inset * 2, h - 1 - inset * 2, radius, radius);
             }
+
+            if (accentStripeColor != null) {
+                Shape oldClip = g2.getClip();
+                g2.setClip(new RoundRectangle2D.Double(inset, inset, w - 1 - inset * 2, h - 1 - inset * 2, radius, radius));
+                g2.setColor(accentStripeColor);
+                g2.fillRect(inset, inset, 6, h - inset * 2);
+                g2.setClip(oldClip);
+            }
+
             if (borderColor != null) {
                 g2.setColor(borderColor);
-                g2.setStroke(new BasicStroke(1.2f));
-                g2.drawRoundRect(0, 0, w - 1, h - 1, radius, radius);
+                g2.setStroke(new BasicStroke(borderWidth));
+                g2.drawRoundRect(inset, inset, w - 1 - inset * 2, h - 1 - inset * 2, radius, radius);
+
+                if (doubleFrame) {
+                    g2.setColor(new Color(0x1E, 0x1B, 0x4B));
+                    g2.setStroke(new BasicStroke(1.2f));
+                    g2.drawRoundRect(0, 0, w - 1, h - 1, radius + 2, radius + 2);
+                }
             }
             g2.dispose();
             super.paintComponent(g);
         }
     }
 
-    /**
-     * 마우스 호버 상태 전환 및 라운드 코너 스타일링을 지원하는 모던 Swing 버튼 컴포넌트입니다.
-     */
+    /** 마우스를 올리면 배경색이 바뀌는 둥근 버튼. */
     public static class ModernButton extends JButton {
         private Color normalBg;
         private Color hoverBg;
@@ -1073,9 +1307,7 @@ public class ChronoCircleApp {
         }
     }
 
-    /**
-     * 부드러운 슬라이딩 캡슐 애니메이션이 적용된 [ 일 | 월 | 년 ] 뷰 전환 토글 그룹
-     */
+    /** 선택 표시가 애니메이션으로 이동하는 [일 | 월 | 년] 보기 전환 버튼. */
     public static class AnimatedSegmentedControl extends JPanel {
         private final String[] labels = {"일", "월", "년"};
         private final String[] keys = {"DAY", "MONTH", "YEAR"};
@@ -1184,9 +1416,7 @@ public class ChronoCircleApp {
         }
     }
 
-    /**
-     * 부드러운 슬라이드 개폐 애니메이션을 지원하는 컨테이너 (탭 띄우고 내릴 때 자연스러운 모션 제공)
-     */
+    /** 내용 패널을 가로 또는 세로 방향 애니메이션으로 펼치고 접는 컨테이너. */
     public static class SmoothCollapsiblePanel extends JPanel {
         public enum Direction { HORIZONTAL, VERTICAL }
 
@@ -1274,12 +1504,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 8. CircularCanvasPanel (24시간 원형 대시보드)
-    // =========================================================================
-    /**
-     * [패키지 4: 실시간 원형 대시보드] 24시간을 360도 원형 타임라인(Arc2D.Double)으로 시각화하고 드래그/휠 회전 프리뷰 및 현재 시각 동기화 애니메이션을 제공하는 핵심 캔버스 패널입니다 (REQ 4.1~4.4, UC-09, UC-10).
-     */
+    /** 일정을 24시간 원형 시계 위의 호로 그리고, 마우스 드래그나 휠 회전으로 다른 시간대를 미리 보여 주는 대시보드 패널. */
     public static class CircularCanvasPanel extends JPanel {
         private final ScheduleController controller;
         private final SystemTimer systemTimer;
@@ -1328,6 +1553,11 @@ public class ChronoCircleApp {
             repaint();
         }
 
+        /**
+         * 자동 추적을 멈추고 지정한 일정이 위쪽에 오도록 회전한다.
+         *
+         * @param target 보여 줄 일정
+         */
         public void smoothRotateToSchedule(ScheduleDTO target) {
             if (target == null || target.startDateTime == null) return;
             systemTimer.pauseAutoRefresh();
@@ -1339,6 +1569,7 @@ public class ChronoCircleApp {
             animateRotationTo(desiredDeg, null);
         }
 
+        /** 회전 각도를 0으로 되돌려 현재 시각 기준 화면으로 복귀한다. */
         public void animateResetToCurrentTime() {
             highlightedScheduleId = null;
             animateRotationTo(0.0, this::repaint);
@@ -1370,12 +1601,14 @@ public class ChronoCircleApp {
             smoothRotateTimer.start();
         }
 
+        /** @return 현재 회전 상태에서 위쪽(12시 방향)에 해당하는 시각 */
         public LocalTime getPreviewedTimeAtTop() {
             double shiftedMin = 720.0 + (userRotationDeg / 360.0) * 1440.0;
             int normMin = ((int) Math.round(shiftedMin) % 1440 + 1440) % 1440;
             return LocalTime.of(normMin / 60, normMin % 60);
         }
 
+        /** @return 회전하지 않았으면 진행 중(없으면 다음) 일정, 회전 중이면 위쪽 시각에 가장 가까운 일정 */
         public ScheduleDTO getActiveOrPreviewSchedule() {
             List<ScheduleDTO> list = controller.getRepository().findByDate(currentDate);
             if (list.isEmpty()) return null;
@@ -1388,7 +1621,7 @@ public class ChronoCircleApp {
                 for (ScheduleDTO s : list) {
                     if (s.startDateTime.isAfter(now)) return s;
                 }
-                return list.get(0);
+                return list.get(list.size() - 1);
             } else {
                 LocalTime previewTime = getPreviewedTimeAtTop();
                 LocalDateTime pdt = LocalDateTime.of(currentDate, previewTime);
@@ -1404,6 +1637,28 @@ public class ChronoCircleApp {
                 }
                 return best;
             }
+        }
+
+        /**
+         * @param primary 기준 일정
+         * @return 기준 일정 바로 다음에 시작하는 일정, 없으면 null
+         */
+        public ScheduleDTO getImmediateNextSchedule(ScheduleDTO primary) {
+            if (primary == null) return null;
+            List<ScheduleDTO> list = controller.getRepository().findByDate(currentDate);
+            // 현재 일정이 끝난 뒤 시작하는 일정을 우선
+            for (ScheduleDTO s : list) {
+                if (!Objects.equals(s.id, primary.id) && !s.startDateTime.isBefore(primary.endDateTime)) {
+                    return s;
+                }
+            }
+            // 없으면 시간이 겹치더라도 더 늦게 시작하는 일정
+            for (ScheduleDTO s : list) {
+                if (!Objects.equals(s.id, primary.id) && s.startDateTime.isAfter(primary.startDateTime)) {
+                    return s;
+                }
+            }
+            return null;
         }
 
         private void initMouseInteraction() {
@@ -1517,7 +1772,7 @@ public class ChronoCircleApp {
             LocalTime nowTime = systemTimer.now().toLocalTime();
             currentSegments = controller.calculateCircularSegments(currentDate, nowTime);
 
-            // 1. 외부 96개 눈금 (15분 간격) 및 정각 눈금 렌더링
+            // 15분 간격 눈금 (정각/6시간 단위는 더 길게)
             for (int i = 0; i < 96; i++) {
                 double deg = 90.0 - (i / 96.0) * 360.0 + userRotationDeg;
                 double rad = Math.toRadians(deg);
@@ -1537,13 +1792,11 @@ public class ChronoCircleApp {
                 g2.draw(new Line2D.Double(x1, y1, x2, y2));
             }
 
-            // 2. 4대 방위 시간 라벨 (12 정오, 18 저녁, 24 자정, 06 아침)
             drawCardinalLabel(g2, cx, cy - outerTickRadius - 26, "12", "정오");
             drawCardinalLabel(g2, cx + outerTickRadius + 34, cy, "18", "저녁");
             drawCardinalLabel(g2, cx, cy + outerTickRadius + 28, "24", "자정");
             drawCardinalLabel(g2, cx - outerTickRadius - 34, cy, "06", "아침");
 
-            // 3. 기본 원형 트랙 링
             g2.setColor(Color.WHITE);
             g2.fill(new Ellipse2D.Double(cx - ringRadius, cy - ringRadius, ringRadius * 2, ringRadius * 2));
 
@@ -1555,8 +1808,32 @@ public class ChronoCircleApp {
             g2.setStroke(new BasicStroke(1.2f));
             g2.draw(new Ellipse2D.Double(cx - innerCircleRadius, cy - innerCircleRadius, innerCircleRadius * 2, innerCircleRadius * 2));
 
-            // 4. 각 일정 Arc2D.Double 렌더링
             ScheduleDTO activeOrPreview = getActiveOrPreviewSchedule();
+            ScheduleDTO nextAfterActive = getImmediateNextSchedule(activeOrPreview);
+
+            CircularScheduleSegment primarySeg = null;
+            CircularScheduleSegment secondarySeg = null;
+            for (CircularScheduleSegment seg : currentSegments) {
+                if (activeOrPreview != null && Objects.equals(seg.schedule.id, activeOrPreview.id)) {
+                    primarySeg = seg;
+                }
+                if (nextAfterActive != null && Objects.equals(seg.schedule.id, nextAfterActive.id)) {
+                    secondarySeg = seg;
+                }
+            }
+            if (primarySeg == null && !currentSegments.isEmpty()) {
+                primarySeg = currentSegments.get(0);
+                ScheduleDTO fallbackNext = getImmediateNextSchedule(primarySeg.schedule);
+                for (CircularScheduleSegment seg : currentSegments) {
+                    if (fallbackNext != null && Objects.equals(seg.schedule.id, fallbackNext.id)) {
+                        secondarySeg = seg;
+                        break;
+                    }
+                }
+            }
+
+            Color nextTealColor = new Color(0x0D, 0x94, 0x88);
+            Color currentOuterBorderColor = new Color(0x1E, 0x1B, 0x4B);
 
             for (CircularScheduleSegment seg : currentSegments) {
                 double shiftedStartAngle = seg.rawStartAngleDeg + userRotationDeg;
@@ -1566,108 +1843,181 @@ public class ChronoCircleApp {
                         shiftedStartAngle, seg.sweepAngleDeg, Arc2D.OPEN
                 );
 
-                boolean isHighlighted = (activeOrPreview != null && Objects.equals(seg.schedule.id, activeOrPreview.id))
-                        || Objects.equals(seg.schedule.id, highlightedScheduleId)
-                        || seg == hoveredSegment;
+                boolean isPrimary = (seg == primarySeg);
+                boolean isSecondary = (seg == secondarySeg);
+                boolean isHoveredOrHighlighted = Objects.equals(seg.schedule.id, highlightedScheduleId) || seg == hoveredSegment;
 
-                float strokeWidth = isHighlighted ? 12.5f : 10.0f;
-                Color drawColor = isHighlighted ? PRIMARY_BLUE : new Color(0x8D, 0x99, 0xAE);
+                if (isPrimary) {
+                    g2.setColor(new Color(PRIMARY_BLUE.getRed(), PRIMARY_BLUE.getGreen(), PRIMARY_BLUE.getBlue(), 55));
+                    g2.setStroke(new BasicStroke(21f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
 
-                if (isHighlighted) {
-                    g2.setColor(new Color(PRIMARY_BLUE.getRed(), PRIMARY_BLUE.getGreen(), PRIMARY_BLUE.getBlue(), 45));
-                    g2.setStroke(new BasicStroke(strokeWidth + 6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.setColor(currentOuterBorderColor);
+                    g2.setStroke(new BasicStroke(16.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
+
+                    g2.setColor(Color.WHITE);
+                    g2.setStroke(new BasicStroke(13.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
+
+                    g2.setColor(PRIMARY_BLUE);
+                    g2.setStroke(new BasicStroke(9.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
+
+                    double startRad = Math.toRadians(shiftedStartAngle);
+                    double endRad = Math.toRadians(shiftedStartAngle + seg.sweepAngleDeg);
+                    double sx = cx + ringRadius * Math.cos(startRad);
+                    double sy = cy - ringRadius * Math.sin(startRad);
+                    double ex = cx + ringRadius * Math.cos(endRad);
+                    double ey = cy - ringRadius * Math.sin(endRad);
+
+                    g2.setColor(Color.WHITE);
+                    g2.fill(new Ellipse2D.Double(sx - 4.2, sy - 4.2, 8.4, 8.4));
+                    g2.fill(new Ellipse2D.Double(ex - 4.2, ey - 4.2, 8.4, 8.4));
+                    g2.setColor(currentOuterBorderColor);
+                    g2.setStroke(new BasicStroke(2.2f));
+                    g2.draw(new Ellipse2D.Double(sx - 4.2, sy - 4.2, 8.4, 8.4));
+                    g2.draw(new Ellipse2D.Double(ex - 4.2, ey - 4.2, 8.4, 8.4));
+                } else if (isSecondary) {
+                    g2.setColor(new Color(0x0D, 0x94, 0x88, 42));
+                    g2.setStroke(new BasicStroke(16.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
+
+                    g2.setColor(new Color(0x0F, 0x76, 0x6E));
+                    g2.setStroke(new BasicStroke(12.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
+
+                    g2.setColor(nextTealColor);
+                    g2.setStroke(new BasicStroke(9.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(arc);
+                } else {
+                    if (isHoveredOrHighlighted) {
+                        g2.setColor(new Color(PRIMARY_BLUE.getRed(), PRIMARY_BLUE.getGreen(), PRIMARY_BLUE.getBlue(), 40));
+                        g2.setStroke(new BasicStroke(16f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                        g2.draw(arc);
+                    }
+                    LocalDateTime refNow = LocalDateTime.of(currentDate, nowTime);
+                    boolean isPast = seg.schedule.endDateTime.isBefore(refNow);
+                    Color otherCol = isHoveredOrHighlighted
+                            ? PRIMARY_BLUE
+                            : (isPast ? new Color(0xCB, 0xD5, 0xE1) : new Color(0x8D, 0x99, 0xAE));
+                    g2.setColor(otherCol);
+                    g2.setStroke(new BasicStroke(isHoveredOrHighlighted ? 11.0f : 9.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     g2.draw(arc);
                 }
-
-                g2.setColor(drawColor);
-                g2.setStroke(new BasicStroke(strokeWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.draw(arc);
 
                 seg.renderedArcShape = new BasicStroke(22f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(arc);
             }
 
-            // 현재 시각 마커 점 표시
             double nowMinutes = nowTime.getHour() * 60.0 + nowTime.getMinute();
             double nowAngleDeg = 270.0 - (nowMinutes / 1440.0) * 360.0 + userRotationDeg;
             double nowRad = Math.toRadians(nowAngleDeg);
             double markerX = cx + ringRadius * Math.cos(nowRad);
             double markerY = cy - ringRadius * Math.sin(nowRad);
             g2.setColor(Color.WHITE);
-            g2.fill(new Ellipse2D.Double(markerX - 5, markerY - 5, 10, 10));
-            g2.setColor(PRIMARY_BLUE);
-            g2.setStroke(new BasicStroke(2.5f));
-            g2.draw(new Ellipse2D.Double(markerX - 5, markerY - 5, 10, 10));
+            g2.fill(new Ellipse2D.Double(markerX - 5.5, markerY - 5.5, 11, 11));
+            g2.setColor( DANGER_RED );
+            g2.setStroke(new BasicStroke(2.6f));
+            g2.draw(new Ellipse2D.Double(markerX - 5.5, markerY - 5.5, 11, 11));
 
-            // 5. 원형 내부 플로팅 콜아웃 카드 렌더링
-            g2.setFont(uiFont(Font.PLAIN, 12));
+            drawScheduleLegendBar(g2, cx, h - 14);
+
+            g2.setFont(uiFont(Font.PLAIN, 11));
             g2.setColor(TEXT_MUTED);
             String centerCaption = systemTimer.isAutoRefreshPaused()
                     ? String.format("탐색 기준 %s (드래그/휠 회전)", getPreviewedTimeAtTop().format(DateTimeFormatter.ofPattern("HH:mm")))
-                    : "24시간 타임라인";
+                    : "24시간 타임라인 (현재 vs 다음 일정 구분)";
             FontMetrics fmCap = g2.getFontMetrics();
-            g2.drawString(centerCaption, (int) (cx - fmCap.stringWidth(centerCaption) / 2.0), (int) (cy + 14));
+            g2.drawString(centerCaption, (int) (cx - fmCap.stringWidth(centerCaption) / 2.0), (int) (cy + 11));
 
             if (currentSegments.isEmpty()) {
                 drawEmptyStateInsideCircle(g2, cx, cy);
-            } else {
-                CircularScheduleSegment primarySeg = null;
-                for (CircularScheduleSegment seg : currentSegments) {
-                    if (activeOrPreview != null && Objects.equals(seg.schedule.id, activeOrPreview.id)) {
-                        primarySeg = seg;
-                        break;
-                    }
-                }
-                if (primarySeg == null) primarySeg = currentSegments.get(0);
-
-                CircularScheduleSegment secondarySeg = null;
-                for (CircularScheduleSegment seg : currentSegments) {
-                    if (seg != primarySeg && seg.schedule.startDateTime.getHour() >= 17) {
-                        secondarySeg = seg;
-                        break;
-                    }
-                }
-                if (secondarySeg == null) {
-                    for (CircularScheduleSegment seg : currentSegments) {
-                        if (seg != primarySeg) {
-                            secondarySeg = seg;
-                            break;
-                        }
-                    }
-                }
-
-                double card1W = Math.min(240, innerCircleRadius * 1.48);
-                double card1H = 82;
+            } else if (primarySeg != null) {
+                double card1W = Math.min(242, innerCircleRadius * 1.50);
+                double card1H = 86;
                 double card1X = cx - card1W / 2.0;
-                double card1Y = cy - innerCircleRadius * 0.64;
+                double card1Y = cy - innerCircleRadius * 0.67;
 
-                g2.setColor(PRIMARY_BORDER);
-                g2.setStroke(new BasicStroke(1.2f));
-                g2.draw(new Line2D.Double(cx, card1Y, cx, cy - innerCircleRadius));
+                double pMidAngle = Math.toRadians(primarySeg.rawStartAngleDeg + userRotationDeg + primarySeg.sweepAngleDeg / 2.0);
+                double pArcX = cx + innerCircleRadius * Math.cos(pMidAngle);
+                double pArcY = cy - innerCircleRadius * Math.sin(pMidAngle);
+
+                g2.setColor(PRIMARY_BLUE);
+                g2.setStroke(new BasicStroke(2.0f));
+                g2.draw(new Line2D.Double(cx, card1Y, pArcX, pArcY));
+                g2.setColor(Color.WHITE);
+                g2.fill(new Ellipse2D.Double(pArcX - 4, pArcY - 4, 8, 8));
+                g2.setColor(currentOuterBorderColor);
+                g2.setStroke(new BasicStroke(2.0f));
+                g2.draw(new Ellipse2D.Double(pArcX - 4, pArcY - 4, 8, 8));
 
                 String badgeText = systemTimer.isAutoRefreshPaused()
-                        ? "● 회전 프리뷰"
-                        : (primarySeg.isOngoing ? "● 현재 진행" : "● 예정 일정");
+                        ? "▣ 회전 프리뷰 일정"
+                        : (primarySeg.isOngoing ? "▣ 현재 진행 일정" : "▣ 현재 기준 일정");
                 drawInnerScheduleCard(g2, primarySeg, card1X, card1Y, card1W, card1H,
-                        PRIMARY_LIGHT_BG, PRIMARY_BORDER, badgeText, true);
+                        PRIMARY_LIGHT_BG, PRIMARY_BLUE, badgeText, true);
 
                 if (secondarySeg != null) {
-                    double card2W = Math.min(210, innerCircleRadius * 1.32);
-                    double card2H = 62;
-                    double card2X = cx - card2W / 2.0 + 8;
-                    double card2Y = cy + innerCircleRadius * 0.24;
+                    double card2W = Math.min(224, innerCircleRadius * 1.38);
+                    double card2H = 74;
+                    double card2X = cx - card2W / 2.0;
+                    double card2Y = cy + innerCircleRadius * 0.19;
 
                     double sMidAngle = Math.toRadians(secondarySeg.rawStartAngleDeg + userRotationDeg + secondarySeg.sweepAngleDeg / 2.0);
                     double sArcX = cx + innerCircleRadius * Math.cos(sMidAngle);
-                    g2.setColor(new Color(0xE2, 0xE8, 0xF0));
-                    g2.setStroke(new BasicStroke(1.1f));
-                    g2.draw(new Line2D.Double(card2X + card2W, card2Y + card2H / 2.0, sArcX, card2Y + card2H / 2.0));
+                    double sArcY = cy - innerCircleRadius * Math.sin(sMidAngle);
+
+                    double startLineX = (sArcX >= cx) ? (card2X + card2W) : card2X;
+                    double startLineY = card2Y + card2H / 2.0;
+                    double elbowX = (sArcX >= cx) ? Math.min(sArcX, startLineX + 18) : Math.max(sArcX, startLineX - 18);
+
+                    Stroke prevStroke = g2.getStroke();
+                    g2.setColor(nextTealColor);
+                    g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                            10.0f, new float[]{4.0f, 3.0f}, 0.0f));
+                    Path2D.Double pointerPath = new Path2D.Double();
+                    pointerPath.moveTo(startLineX, startLineY);
+                    pointerPath.lineTo(elbowX, startLineY);
+                    pointerPath.lineTo(sArcX, sArcY);
+                    g2.draw(pointerPath);
+                    g2.setStroke(prevStroke);
+
+                    g2.setColor(nextTealColor);
+                    g2.fill(new Ellipse2D.Double(sArcX - 3.5, sArcY - 3.5, 7, 7));
+
+                    long gapMin = ChronoUnit.MINUTES.between(primarySeg.schedule.endDateTime, secondarySeg.schedule.startDateTime);
+                    String nextBadge = gapMin > 0
+                            ? String.format("⏭ 바로 다음 일정 (종료 %s 후)", MainFrame.formatDurationKor(gapMin))
+                            : "⏭ 바로 다음 일정 (직후 이어짐)";
 
                     drawInnerScheduleCard(g2, secondarySeg, card2X, card2Y, card2W, card2H,
-                            new Color(0xF8, 0xFA, 0xFC), new Color(0xE2, 0xE8, 0xF0), null, false);
+                            new Color(0xF0, 0xFD, 0xFA), nextTealColor, nextBadge, false);
                 }
             }
 
             g2.dispose();
+        }
+
+        private void drawScheduleLegendBar(Graphics2D g2, double cx, double y) {
+            g2.setFont(uiFont(Font.BOLD, 11));
+            String item1 = "▣ 현재 일정(이중 테두리)";
+            String item2 = "● 바로 다음 일정";
+            String item3 = "● 이후/완료 일정";
+            FontMetrics fm = g2.getFontMetrics();
+            int gap = 16;
+            int totalW = fm.stringWidth(item1) + fm.stringWidth(item2) + fm.stringWidth(item3) + gap * 2;
+            int startX = (int) Math.round(cx - totalW / 2.0);
+
+            g2.setColor(PRIMARY_BLUE);
+            g2.drawString(item1, startX, (int) y);
+            startX += fm.stringWidth(item1) + gap;
+
+            g2.setColor(new Color(0x0D, 0x94, 0x88));
+            g2.drawString(item2, startX, (int) y);
+            startX += fm.stringWidth(item2) + gap;
+
+            g2.setColor(TEXT_MUTED);
+            g2.drawString(item3, startX, (int) y);
         }
 
         private void drawCardinalLabel(Graphics2D g2, double x, double y, String numStr, String korLabel) {
@@ -1689,28 +2039,62 @@ public class ChronoCircleApp {
             seg.calloutCardBounds = rect.getBounds2D();
 
             boolean hovered = (seg == hoveredSegment) || Objects.equals(seg.schedule.id, highlightedScheduleId);
-            g2.setColor(hovered ? (isPrimary ? new Color(0xE0, 0xE7, 0xFF) : new Color(0xF1, 0xF5, 0xF9)) : bg);
-            g2.fill(rect);
-            g2.setColor(hovered ? PRIMARY_BLUE : border);
-            g2.setStroke(new BasicStroke(hovered ? 1.8f : 1.1f));
-            g2.draw(rect);
 
-            double curY = y + (isPrimary ? 21 : 23);
-            if (statusBadge != null) {
-                g2.setFont(uiFont(Font.BOLD, 11));
+            if (isPrimary) {
+                g2.setColor(new Color(PRIMARY_BLUE.getRed(), PRIMARY_BLUE.getGreen(), PRIMARY_BLUE.getBlue(), 42));
+                g2.fill(new RoundRectangle2D.Double(x - 3, y - 3, w + 6, h + 6, 22, 22));
+
+                g2.setColor(hovered ? new Color(0xE0, 0xE7, 0xFF) : bg);
+                g2.fill(rect);
+
+                g2.setColor(new Color(0x1E, 0x1B, 0x4B));
+                g2.setStroke(new BasicStroke(3.4f));
+                g2.draw(new RoundRectangle2D.Double(x - 1.2, y - 1.2, w + 2.4, h + 2.4, 20, 20));
+
                 g2.setColor(PRIMARY_BLUE);
-                FontMetrics fmB = g2.getFontMetrics();
-                g2.drawString(statusBadge, (int) (x + (w - fmB.stringWidth(statusBadge)) / 2.0), (int) curY);
-                curY += 20;
+                g2.setStroke(new BasicStroke(2.2f));
+                g2.draw(rect);
+
+                g2.setColor(Color.WHITE);
+                g2.setStroke(new BasicStroke(1.0f));
+                g2.draw(new RoundRectangle2D.Double(x + 2.2, y + 2.2, w - 4.4, h - 4.4, 14, 14));
+            } else {
+                g2.setColor(hovered ? new Color(0xCC, 0xFB, 0xF1) : bg);
+                g2.fill(rect);
+                g2.setColor(border);
+                g2.setStroke(new BasicStroke(hovered ? 2.2f : 1.6f));
+                g2.draw(rect);
             }
 
-            g2.setFont(uiFont(isPrimary ? Font.BOLD : Font.PLAIN, isPrimary ? 13 : 12));
-            g2.setColor(isPrimary ? PRIMARY_BLUE : TEXT_SECONDARY);
+            double curY = y + (isPrimary ? 21 : 19);
+            if (statusBadge != null) {
+                g2.setFont(uiFont(Font.BOLD, 11));
+                FontMetrics fmB = g2.getFontMetrics();
+                int bw = fmB.stringWidth(statusBadge) + 16;
+                int bh = 18;
+                double bx = x + (w - bw) / 2.0;
+                double by = curY - 13;
+
+                if (isPrimary) {
+                    g2.setColor(PRIMARY_BLUE);
+                    g2.fill(new RoundRectangle2D.Double(bx, by, bw, bh, 10, 10));
+                    g2.setColor(Color.WHITE);
+                } else {
+                    g2.setColor(new Color(0xCC, 0xFB, 0xF1));
+                    g2.fill(new RoundRectangle2D.Double(bx, by, bw, bh, 10, 10));
+                    g2.setColor(new Color(0x0F, 0x76, 0x6E));
+                }
+                g2.drawString(statusBadge, (int) (x + (w - fmB.stringWidth(statusBadge)) / 2.0), (int) curY);
+                curY += (isPrimary ? 21 : 19);
+            }
+
+            g2.setFont(uiFont(Font.BOLD, isPrimary ? 13 : 12));
+            g2.setColor(isPrimary ? PRIMARY_BLUE : new Color(0x0F, 0x76, 0x6E));
             String timeTxt = seg.schedule.getShortTimeRangeText();
             FontMetrics fmT = g2.getFontMetrics();
             g2.drawString(timeTxt, (int) (x + (w - fmT.stringWidth(timeTxt)) / 2.0), (int) curY);
 
-            curY += (isPrimary ? 23 : 21);
+            curY += (isPrimary ? 22 : 20);
             g2.setFont(uiFont(Font.BOLD, isPrimary ? 15 : 13));
             g2.setColor(TEXT_PRIMARY);
             String title = ellipsize(seg.schedule.title, g2.getFontMetrics(), (int) w - 24);
@@ -1751,12 +2135,7 @@ public class ChronoCircleApp {
         return text.substring(0, len) + ellipsis;
     }
 
-    // =========================================================================
-    // 9. MonthCalendarPanel (월간 달력 뷰)
-    // =========================================================================
-    /**
-     * [패키지 3: 다각도 일정 열람] 6x7 격자 레이아웃 기반의 월간 달력 뷰 패널로, 오늘 배지 및 일정 캡슐(Pill) 표시와 일간 뷰 즉시 전환 인터랙션을 제공합니다 (REQ 3.1, 3.2, UC-07).
-     */
+    /** 클릭하면 날짜를 선택하고 더블 클릭하면 일간 원형 대시보드로 전환하는 6x7 격자 월간 달력. */
     public static class MonthCalendarPanel extends JPanel {
         private final ScheduleController controller;
         private YearMonth currentYearMonth;
@@ -2020,12 +2399,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 10. YearCalendarPanel (연간 달력 뷰 - REQ 3.2 & UC-07 [일/월/년] 전환 완벽 지원)
-    // =========================================================================
-    /**
-     * [패키지 3: 다각도 일정 열람] 12개월 미니 캘린더 그리드를 통해 연간 일정 분포를 한눈에 열람하고 월간/일간 뷰로 즉시 이동할 수 있는 연간 오버뷰 패널입니다 (REQ 3.2, UC-07).
-     */
+    /** 12개월 미니 달력으로 연간 일정 분포를 보여 주는 연간 보기. */
     public static class YearCalendarPanel extends JPanel {
         private final ScheduleController controller;
         private int currentYear;
@@ -2176,12 +2550,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 11. ScheduleFormDialog (일정 등록/수정 모달)
-    // =========================================================================
-    /**
-     * [패키지 1 &amp; 5: 일정 등록/수정 모달] AI 자연어 빠른 등록, 실시간 무손실 임시 저장(DraftSessionManager), 알림 주기 설정 및 시간 중복 검증을 수행하는 모달 다이얼로그입니다 (REQ 1.1~1.3, 2.2~2.3, 5.1~5.2).
-     */
+    /** 일정 등록/수정 다이얼로그. 자연어 빠른 입력, 임시 저장 복원, 알림 설정, 시간 중복 확인을 포함한다. */
     public static class ScheduleFormDialog extends JDialog {
         private final ScheduleController controller;
         private final ScheduleDTO editingSchedule;
@@ -2269,10 +2638,10 @@ public class ChronoCircleApp {
             draftRestoredBanner.setLayout(new BorderLayout(8, 0));
             draftRestoredBanner.setBorder(new EmptyBorder(8, 12, 8, 12));
             draftRestoredBanner.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-            JLabel lblBanner = new JLabel("작성 중이던 데이터를 자동으로 복구했습니다.");
+            JLabel lblBanner = new JLabel("💡 작성 중이던 임시 저장 데이터를 자동으로 복구했습니다.");
             lblBanner.setFont(uiFont(Font.BOLD, 12));
             lblBanner.setForeground(new Color(0x92, 0x40, 0x0E));
-            ModernButton btnClearDraft = new ModernButton("비우기", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
+            ModernButton btnClearDraft = new ModernButton("비우기 (초기화)", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
             btnClearDraft.setFont(uiFont(Font.BOLD, 11));
             btnClearDraft.setPreferredSize(new Dimension(106, 24));
             btnClearDraft.addActionListener(e -> {
@@ -2292,7 +2661,7 @@ public class ChronoCircleApp {
             RoundedCardPanel aiSection = new RoundedCardPanel(14, Color.WHITE, BORDER_COLOR);
             aiSection.setLayout(new BorderLayout(0, 10));
             aiSection.setBorder(BorderFactory.createCompoundBorder(
-                    new TitledBorder(new LineBorder(BORDER_COLOR, 1, true), " AI 자연어 등록 ",
+                    new TitledBorder(new LineBorder(BORDER_COLOR, 1, true), " AI 자연어 빠른 등록 ",
                             TitledBorder.LEFT, TitledBorder.TOP, uiFont(Font.BOLD, 13), TEXT_PRIMARY),
                     new EmptyBorder(8, 12, 12, 12)
             ));
@@ -2312,7 +2681,7 @@ public class ChronoCircleApp {
 
             JPanel aiBottomBar = new JPanel(new BorderLayout(0, 4));
             aiBottomBar.setOpaque(false);
-            btnParse = new ModernButton("🕊️ AI 자동 분석 및 필드 완성",
+            btnParse = new ModernButton("⚡ AI 자동 분석 및 필드 완성",
                     PRIMARY_LIGHT_BG, new Color(0xE0, 0xE7, 0xFF), INDIGO_PURPLE, PRIMARY_BORDER, 10);
             btnParse.setPreferredSize(new Dimension(480, 38));
             btnParse.setFont(uiFont(Font.BOLD, 13));
@@ -2342,7 +2711,7 @@ public class ChronoCircleApp {
             JPanel titleWrap = new JPanel(new BorderLayout(0, 2));
             titleWrap.setOpaque(false);
             titleField = createStyledTextField("");
-            lblTitleError = new JLabel("*필수 입력 항목: 일정 제목을 입력해 주세요.");
+            lblTitleError = new JLabel("필수 입력 항목입니다: 일정 제목을 입력해 주세요.");
             lblTitleError.setFont(uiFont(Font.BOLD, 11));
             lblTitleError.setForeground(DANGER_RED);
             lblTitleError.setVisible(false);
@@ -2526,19 +2895,18 @@ public class ChronoCircleApp {
                 return;
             }
             btnParse.setEnabled(false);
-            btnParse.setText("🦭 AI가 일정 문장을 분석 중입니다...");
+            btnParse.setText("⏳ AI가 일정 문장을 분석 중입니다...");
 
             SwingWorker<ParsedScheduleDTO, Void> worker = new SwingWorker<>() {
                 @Override
-                protected ParsedScheduleDTO doInBackground() throws Exception {
-                    Thread.sleep(220);
+                protected ParsedScheduleDTO doInBackground() {
                     return controller.parseNaturalLanguagePrompt(raw);
                 }
 
                 @Override
                 protected void done() {
                     btnParse.setEnabled(true);
-                    btnParse.setText("🕊️ AI 자동 분석 및 필드 완성");
+                    btnParse.setText("⚡ AI 자동 분석 및 필드 완성");
                     try {
                         ParsedScheduleDTO parsed = get();
                         populateFromParsedDTO(parsed);
@@ -2554,6 +2922,7 @@ public class ChronoCircleApp {
             worker.execute();
         }
 
+        /** @param parsed 자연어 분석 결과. 폼의 각 필드를 채운다. */
         public void populateFromParsedDTO(ParsedScheduleDTO parsed) {
             if (parsed == null) return;
             if (parsed.rawPrompt != null && !parsed.rawPrompt.isEmpty()) {
@@ -2691,7 +3060,7 @@ public class ChronoCircleApp {
 
         private void handleDelete() {
             int confirm = JOptionPane.showConfirmDialog(this,
-                    String.format("'%s' 일정을 삭제하시겠습니까?\n삭제된 일정과 알림 대기열은 복구할 수 없습니다.", editingSchedule.title),
+                    String.format("'%s' 일정을 정말 삭제하시겠습니까?\n삭제된 일정과 알림 대기열은 복구할 수 없습니다.", editingSchedule.title),
                     "일정 삭제 확인", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm == JOptionPane.YES_OPTION) {
                 controller.getRepository().deleteById(editingSchedule.id);
@@ -2746,12 +3115,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 12. PromptInputModal (독립 AI 프롬프트 모달)
-    // =========================================================================
-    /**
-     * [패키지 5: AI 자연어 일정 등록] 비정형 자연어 프롬프트 전용 빠른 입력 모달 다이얼로그입니다 (Sequence Diagram PromptInputModal 대응).
-     */
+    /** 자연어 문장만 입력해 일정을 빠르게 만드는 다이얼로그. */
     public static class PromptInputModal extends JDialog {
         public PromptInputModal(Frame owner, ScheduleController controller, LocalDate targetDate) {
             super(owner, "AI 자연어 프롬프트 일정 등록", true);
@@ -2764,11 +3128,11 @@ public class ChronoCircleApp {
             body.setBackground(Color.WHITE);
             body.setBorder(new EmptyBorder(20, 24, 16, 24));
 
-            JLabel title = new JLabel("💬 AI 자연어 일정 등록");
+            JLabel title = new JLabel("💬 AI 자연어 한 줄 일정 등록");
             title.setFont(uiFont(Font.BOLD, 17));
             title.setForeground(TEXT_PRIMARY);
 
-            JLabel sub = new JLabel("<html>일상적인 문장으로 일정을 입력하면 AI가 날짜·시간·장소·제목을 추출하여<br/>등록 폼에 자동으로 입력합니다.</html>");
+            JLabel sub = new JLabel("<html>일상적인 문장으로 일정을 입력하면 AI가 날짜·시간·장소·제목을 추출하여<br/>확인용 등록 폼에 자동으로 채워 넣습니다.</html>");
             sub.setFont(uiFont(Font.PLAIN, 12));
             sub.setForeground(TEXT_SECONDARY);
 
@@ -2815,7 +3179,7 @@ public class ChronoCircleApp {
             btnCancel.setPreferredSize(new Dimension(88, 36));
             btnCancel.addActionListener(e -> dispose());
 
-            ModernButton btnAnalyze = new ModernButton("🕊️ AI 분석 및 등록 폼 열기", PRIMARY_BLUE, PRIMARY_BLUE_HOVER, Color.WHITE, null, 8);
+            ModernButton btnAnalyze = new ModernButton("⚡ AI 분석 및 등록 폼 열기", PRIMARY_BLUE, PRIMARY_BLUE_HOVER, Color.WHITE, null, 8);
             btnAnalyze.setPreferredSize(new Dimension(190, 36));
             btnAnalyze.addActionListener(e -> {
                 String text = inputArea.getText().trim();
@@ -2849,12 +3213,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 13. ScheduleDetailDialog (UC-08 일정 상세 정보 조회 및 수정/삭제 모달)
-    // =========================================================================
-    /**
-     * [패키지 3: 일정 상세 정보 조회] 선택한 일정의 전체 메타데이터(제목, 시작/종료 일시, 장소, 알림 설정, 상세 설명)를 조회하고 수정/삭제를 수행하는 모달 다이얼로그입니다 (UC-08).
-     */
+    /** 일정 상세 정보를 보여 주고 수정이나 삭제를 할 수 있는 다이얼로그. */
     public static class ScheduleDetailDialog extends JDialog {
         public ScheduleDetailDialog(Frame owner, ScheduleController controller, ScheduleDTO scheduleIdHolder) {
             super(owner, "일정 상세 정보", true);
@@ -2980,12 +3339,7 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 14. MainFrame (프로그램 메인 프레임)
-    // =========================================================================
-    /**
-     * [메인 애플리케이션 프레임] 상단 검색 및 [일|월|년] 뷰 전환 바, 중앙 대시보드 CardLayout, 우측 슬라이드 일과 타임라인 드로어, 하단 진행 일정 브리핑 카드를 통합 제어하는 메인 윈도우입니다.
-     */
+    /** 상단 검색과 보기 전환, 가운데 일/월/년 화면, 오른쪽 일과 목록, 아래쪽 진행 중 일정 카드로 구성된 메인 창. */
     public static class MainFrame extends JFrame {
         private final ScheduleController controller;
         private final SystemTimer systemTimer;
@@ -3191,7 +3545,7 @@ public class ChronoCircleApp {
             bannerCard.setLayout(new BorderLayout(12, 0));
             bannerCard.setBorder(new EmptyBorder(8, 26, 8, 26));
 
-            lblBannerNotificationText = new JLabel("🔔 [알림] 예정된 일정이 곧 시작됩니다.");
+            lblBannerNotificationText = new JLabel("🔔 [스마트 알림] 예정된 일정이 곧 시작됩니다.");
             lblBannerNotificationText.setFont(uiFont(Font.BOLD, 13));
             lblBannerNotificationText.setForeground(INDIGO_PURPLE);
             lblBannerNotificationText.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -3527,6 +3881,7 @@ public class ChronoCircleApp {
             refreshAllViews();
         }
 
+        /** @param rotatedByUser true면 [Refresh] 버튼을 표시하고, false면 숨긴다 */
         public void updateSyncBannerState(boolean rotatedByUser) {
             if (rotatedByUser || systemTimer.isAutoRefreshPaused()) {
                 btnRefreshSync.setVisible(true);
@@ -3557,6 +3912,11 @@ public class ChronoCircleApp {
             }
         }
 
+        /**
+         * 화면 상단 알림 배너를 펼치고, 시스템 트레이를 쓸 수 있으면 트레이 알림도 띄운다.
+         *
+         * @param s 알림 대상 일정
+         */
         public void dispatchNotificationUI(ScheduleDTO s) {
             this.lastNotifiedSchedule = s;
             String msg = String.format("🔔 [일정 알림] '%s' (%s, 장소: %s) 시작 %s 전입니다! (클릭하여 상세 보기)",
@@ -3698,6 +4058,7 @@ public class ChronoCircleApp {
             searchPopup.show(searchField.getParent(), 0, searchField.getParent().getHeight() + 4);
         }
 
+        /** 모든 보기(원형 대시보드, 달력, 일과 목록, 하단 카드)를 저장소 내용으로 다시 그린다. */
         public void refreshAllViews() {
             DateTimeFormatter titleFmt = DateTimeFormatter.ofPattern("yyyy년 M월 d일 (E)", Locale.KOREAN);
             lblCurrentDateTitle.setText(selectedDate.format(titleFmt));
@@ -3717,6 +4078,9 @@ public class ChronoCircleApp {
             LocalTime nowT = systemTimer.now().toLocalTime();
             LocalDateTime refNow = LocalDateTime.of(selectedDate, nowT);
 
+            ScheduleDTO activePrimary = circularCanvasPanel.getActiveOrPreviewSchedule();
+            ScheduleDTO immediateNext = circularCanvasPanel.getImmediateNextSchedule(activePrimary);
+
             lblDrawerSummary.setText(String.format("%s · 총 %d건 (클릭: 상세/수정, 호버: 회전 프리뷰)",
                     selectedDate.format(DateTimeFormatter.ofPattern("M월 d일(E)", Locale.KOREAN)), list.size()));
 
@@ -3725,21 +4089,32 @@ public class ChronoCircleApp {
                 empty.setFont(uiFont(Font.PLAIN, 12));
                 timelineListContainer.add(empty);
             } else {
+                Color nextTeal = new Color(0x0D, 0x94, 0x88);
                 for (int i = 0; i < list.size(); i++) {
                     ScheduleDTO s = list.get(i);
-                    boolean ongoing = s.isOngoingAt(refNow);
-                    boolean finished = s.endDateTime.isBefore(refNow);
+                    boolean ongoing = s.isOngoingAt(refNow) || (activePrimary != null && Objects.equals(s.id, activePrimary.id) && !systemTimer.isAutoRefreshPaused());
+                    boolean isImmediateNext = (immediateNext != null && Objects.equals(s.id, immediateNext.id));
+                    boolean finished = !ongoing && !isImmediateNext && s.endDateTime.isBefore(refNow);
 
-                    RoundedCardPanel itemCard = new RoundedCardPanel(12,
-                            ongoing ? PRIMARY_LIGHT_BG : (finished ? BG_MAIN : Color.WHITE),
-                            ongoing ? PRIMARY_BLUE : BORDER_COLOR);
+                    Color cardBg = ongoing
+                            ? PRIMARY_LIGHT_BG
+                            : (isImmediateNext ? new Color(0xF0, 0xFD, 0xFA) : (finished ? BG_MAIN : Color.WHITE));
+                    Color cardBorder = ongoing
+                            ? PRIMARY_BLUE
+                            : (isImmediateNext ? nextTeal : BORDER_COLOR);
+                    float strokeW = ongoing ? 2.6f : (isImmediateNext ? 2.0f : 1.2f);
+                    Color stripeCol = ongoing ? PRIMARY_BLUE : (isImmediateNext ? nextTeal : null);
+
+                    RoundedCardPanel itemCard = new RoundedCardPanel(12, cardBg, cardBorder, strokeW, stripeCol, ongoing);
                     itemCard.setLayout(new BorderLayout(8, 4));
-                    itemCard.setBorder(new EmptyBorder(10, 12, 10, 12));
-                    itemCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 82));
+                    itemCard.setBorder(new EmptyBorder(10, 14, 10, 12));
+                    itemCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 86));
                     itemCard.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-                    String statusTag = ongoing ? "● 진행 중" : (finished ? "✓ 완료" : "예정");
-                    Color statusCol = ongoing ? PRIMARY_BLUE : (finished ? TEXT_MUTED : SUCCESS_GREEN);
+                    String statusTag = ongoing
+                            ? "▣ 현재 일정 (테두리 강조)"
+                            : (isImmediateNext ? "⏭ 바로 다음 일정" : (finished ? "✓ 완료" : "이후 예정"));
+                    Color statusCol = ongoing ? PRIMARY_BLUE : (isImmediateNext ? nextTeal : (finished ? TEXT_MUTED : TEXT_SECONDARY));
 
                     JPanel topLine = new JPanel(new BorderLayout());
                     topLine.setOpaque(false);
@@ -3835,8 +4210,12 @@ public class ChronoCircleApp {
                 lblBottomCardHeader.setText("⏭ 다음 예정 일정 브리핑");
             }
 
+            ScheduleDTO nextAfterTarget = circularCanvasPanel.getImmediateNextSchedule(target);
+            String nextInfo = (nextAfterTarget != null)
+                    ? String.format("   |   ⏭ 바로 다음 일정: %s (%s)", nextAfterTarget.title, nextAfterTarget.getTimeRangeText())
+                    : "   |   ⏭ 금일 이후 예정 일정 없음";
             lblBottomScheduleTitle.setText(String.format("제목: %s (%s)", target.title, target.getTimeRangeText()));
-            lblBottomScheduleLocation.setText("📍 장소: " + (target.location.isEmpty() ? "미지정" : target.location));
+            lblBottomScheduleLocation.setText("📍 장소: " + (target.location.isEmpty() ? "미지정" : target.location) + nextInfo);
 
             if (ongoing) {
                 long remainMin = Math.max(1, ChronoUnit.MINUTES.between(now, target.endDateTime));
@@ -3863,7 +4242,7 @@ public class ChronoCircleApp {
             }
         }
 
-        private static String formatDurationKor(long minutes) {
+        public static String formatDurationKor(long minutes) {
             if (minutes < 60) return minutes + "분";
             long h = minutes / 60;
             long m = minutes % 60;
@@ -3871,9 +4250,11 @@ public class ChronoCircleApp {
         }
     }
 
-    // =========================================================================
-    // 15. 애플리케이션 엔트리포인트 및 오프스크린 검증/스크린샷 유틸리티
-    // =========================================================================
+    /**
+     * 프로그램 시작점. <code>--verify-headless [출력 폴더]</code> 인자를 주면 창 없이 핵심 함수 검증만 수행한다.
+     *
+     * @param args 명령행 인자
+     */
     public static void main(String[] args) {
         initFontAndLook();
 
