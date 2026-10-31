@@ -3355,6 +3355,7 @@ public class ChronoCircleApp {
         private SmoothCollapsiblePanel notificationBannerDrawer;
         private JLabel lblBannerNotificationText;
         private ScheduleDTO lastNotifiedSchedule;
+        private TrayIcon trayIcon;
 
         private CardLayout centerCardLayout;
         private JPanel centerCardContainer;
@@ -3403,8 +3404,66 @@ public class ChronoCircleApp {
             buildBottomStatusAndActionArea();
 
             refreshAllViews();
+            installTrayIcon();
             this.systemTimer.setSimulationTarget(LocalDateTime.of(2026, 10, 15, 12, 18, 0));
             this.systemTimer.start();
+        }
+
+        private void installTrayIcon() {
+            if (!SystemTray.isSupported()) return;
+
+            PopupMenu menu = new PopupMenu();
+            MenuItem openItem = new MenuItem("ChronoCircle 열기");
+            openItem.addActionListener(e -> bringToFront());
+            MenuItem exitItem = new MenuItem("종료");
+            exitItem.addActionListener(e -> dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING)));
+            menu.add(openItem);
+            menu.addSeparator();
+            menu.add(exitItem);
+
+            trayIcon = new TrayIcon(createTrayImage(), "ChronoCircle 일정 알림", menu);
+            trayIcon.setImageAutoSize(true);
+            // 트레이 아이콘 더블 클릭과 알림 풍선 클릭이 모두 이 리스너로 들어온다
+            trayIcon.addActionListener(e -> SwingUtilities.invokeLater(() -> {
+                bringToFront();
+                if (lastNotifiedSchedule != null) {
+                    new ScheduleDetailDialog(MainFrame.this, controller, lastNotifiedSchedule).setVisible(true);
+                }
+            }));
+            try {
+                SystemTray.getSystemTray().add(trayIcon);
+            } catch (AWTException e) {
+                trayIcon = null;
+                return;
+            }
+            addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosing(WindowEvent e) {
+                    if (trayIcon != null) SystemTray.getSystemTray().remove(trayIcon);
+                }
+            });
+        }
+
+        private void bringToFront() {
+            setVisible(true);
+            setExtendedState(getExtendedState() & ~Frame.ICONIFIED);
+            toFront();
+            requestFocus();
+        }
+
+        private static Image createTrayImage() {
+            BufferedImage img = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(PRIMARY_BLUE);
+            g.fillOval(1, 1, 30, 30);
+            g.setColor(Color.WHITE);
+            g.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.drawOval(6, 6, 20, 20);
+            g.drawLine(16, 16, 16, 9);
+            g.drawLine(16, 16, 21, 19);
+            g.dispose();
+            return img;
         }
 
         public LocalDate getSelectedDate() {
@@ -3926,14 +3985,11 @@ public class ChronoCircleApp {
             lblBannerNotificationText.setText(msg);
             notificationBannerDrawer.setExpanded(true, true);
 
-            if (SystemTray.isSupported()) {
-                try {
-                    SystemTray tray = SystemTray.getSystemTray();
-                    TrayIcon[] icons = tray.getTrayIcons();
-                    if (icons.length > 0) {
-                        icons[0].displayMessage("ChronoCircle 일정 알림", s.title + " (" + s.getTimeRangeText() + ")", TrayIcon.MessageType.INFO);
-                    }
-                } catch (Exception ignored) {}
+            if (trayIcon != null) {
+                trayIcon.displayMessage("ChronoCircle 일정 알림",
+                        String.format("%s (%s, %s)", s.title, s.getShortTimeRangeText(),
+                                s.location.isEmpty() ? "장소 미지정" : s.location),
+                        TrayIcon.MessageType.INFO);
             }
         }
 
