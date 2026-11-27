@@ -541,8 +541,10 @@ public class ChronoCircleApp {
      * <p>Gemini API 키가 있으면 Gemini(LLM)에 JSON 형식 추출을 요청해 그 결과를 쓴다.
      * 키가 없거나, 호출이 실패하거나, 응답이 형식에 맞지 않으면 내장 정규식 규칙으로 분석한다.</p>
      *
-     * <p>키는 환경 변수 <code>GEMINI_API_KEY</code> 또는 시스템 속성 <code>gemini.api.key</code>로 지정하고,
-     * 모델은 <code>GEMINI_MODEL</code>(기본값 {@value #DEFAULT_MODEL})로 바꿀 수 있다.</p>
+     * <p>키는 앱의 [AI 키] 설정 창에서 등록하거나(사용자 홈 폴더의 <code>.chronocircle_config.properties</code>에 저장),
+     * 환경 변수 <code>GEMINI_API_KEY</code> 또는 시스템 속성 <code>gemini.api.key</code>로 지정한다.
+     * 우선순위는 시스템 속성 &gt; 앱 설정 &gt; 환경 변수이다.
+     * 모델은 설정 창이나 <code>GEMINI_MODEL</code>(기본값 {@value #DEFAULT_MODEL})로 바꿀 수 있다.</p>
      */
     public static class AIPromptParser {
         public static final String DEFAULT_MODEL = "gemini-3.8-flash";
@@ -573,15 +575,130 @@ public class ChronoCircleApp {
             }
         }
 
-        private static String resolveApiKey() {
-            String key = System.getProperty("gemini.api.key");
-            if (key == null || key.trim().isEmpty()) key = System.getenv("GEMINI_API_KEY");
-            return (key == null || key.trim().isEmpty()) ? null : key.trim();
+        private static final String CONFIG_KEY = "gemini.api.key";
+        private static final String CONFIG_MODEL = "gemini.model";
+
+        /** 시스템 속성 chronocircle.config가 있으면 그 경로를, 없으면 사용자 홈 폴더의 기본 설정 파일을 쓴다. */
+        public static Path configPath() {
+            String custom = System.getProperty("chronocircle.config");
+            if (custom != null && !custom.trim().isEmpty()) return Paths.get(custom.trim());
+            return Paths.get(System.getProperty("user.home"), ".chronocircle_config.properties");
         }
 
-        private static String resolveModel() {
-            String model = System.getenv("GEMINI_MODEL");
-            return (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model.trim();
+        private static synchronized Properties loadConfig() {
+            Properties p = new Properties();
+            Path path = configPath();
+            if (Files.exists(path)) {
+                try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                    p.load(r);
+                } catch (IOException ignored) {}
+            }
+            return p;
+        }
+
+        private static synchronized void storeConfig(Properties p) throws IOException {
+            Path path = configPath();
+            if (path.getParent() != null) Files.createDirectories(path.getParent());
+            try (Writer w = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                p.store(w, "ChronoCircle settings");
+            }
+            try {
+                Files.setPosixFilePermissions(path, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException | IOException ignored) {
+                // Windows는 POSIX 권한을 지원하지 않는다. 홈 폴더 자체가 사용자 전용이다.
+            }
+        }
+
+        private static String blankToNull(String s) {
+            return (s == null || s.trim().isEmpty()) ? null : s.trim();
+        }
+
+        /** @return 앱 설정 창에서 저장한 키 (없으면 null) */
+        public static String getSavedApiKey() {
+            return blankToNull(loadConfig().getProperty(CONFIG_KEY));
+        }
+
+        /** @return 앱 설정 창에서 저장한 모델 이름 (없으면 null) */
+        public static String getSavedModel() {
+            return blankToNull(loadConfig().getProperty(CONFIG_MODEL));
+        }
+
+        /**
+         * 키와 모델을 설정 파일에 저장한다. 값이 비어 있으면 해당 항목을 지운다.
+         *
+         * @param apiKey Gemini API 키
+         * @param model 모델 이름 (비우면 기본 모델)
+         */
+        public static void saveSettings(String apiKey, String model) throws IOException {
+            Properties p = loadConfig();
+            if (blankToNull(apiKey) == null) p.remove(CONFIG_KEY); else p.setProperty(CONFIG_KEY, apiKey.trim());
+            if (blankToNull(model) == null) p.remove(CONFIG_MODEL); else p.setProperty(CONFIG_MODEL, model.trim());
+            storeConfig(p);
+        }
+
+        /** 설정 파일에 저장한 키를 지운다 (모델 설정은 남긴다). */
+        public static void clearSavedApiKey() throws IOException {
+            Properties p = loadConfig();
+            p.remove(CONFIG_KEY);
+            storeConfig(p);
+        }
+
+        /** @return 지금 쓰이는 키의 출처: "시스템 속성", "앱 설정", "환경 변수" 또는 null(키 없음) */
+        public static String describeKeySource() {
+            if (blankToNull(System.getProperty("gemini.api.key")) != null) return "시스템 속성";
+            if (getSavedApiKey() != null) return "앱 설정";
+            if (blankToNull(System.getenv("GEMINI_API_KEY")) != null) return "환경 변수";
+            return null;
+        }
+
+        /** @return 앞 4자리와 뒤 4자리만 보이게 가린 키 */
+        public static String maskKey(String key) {
+            if (key == null) return "";
+            String k = key.trim();
+            if (k.length() <= 8) return "****";
+            return k.substring(0, 4) + "…" + k.substring(k.length() - 4);
+        }
+
+        public static String resolveApiKey() {
+            String key = blankToNull(System.getProperty("gemini.api.key"));
+            if (key == null) key = getSavedApiKey();
+            if (key == null) key = blankToNull(System.getenv("GEMINI_API_KEY"));
+            return key;
+        }
+
+        public static String resolveModel() {
+            String model = getSavedModel();
+            if (model == null) model = blankToNull(System.getenv("GEMINI_MODEL"));
+            return model == null ? DEFAULT_MODEL : model;
+        }
+
+        /**
+         * 키로 모델 정보를 조회해 키가 유효한지 확인한다. 일정 분석 요청은 보내지 않는다.
+         *
+         * @param apiKey 확인할 키
+         * @param model 확인할 모델 (비우면 기본 모델)
+         * @return 결과 안내 문구
+         * @throws IOException 키가 잘못됐거나 네트워크 오류일 때 (메시지에 원인)
+         */
+        public static String testConnection(String apiKey, String model) throws IOException {
+            String m = blankToNull(model) == null ? DEFAULT_MODEL : model.trim();
+            HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE + m).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("x-goog-api-key", apiKey.trim());
+            int code;
+            try {
+                code = conn.getResponseCode();
+            } catch (IOException e) {
+                throw new IOException("네트워크 오류: " + e.getMessage());
+            } finally {
+                conn.disconnect();
+            }
+            if (code == 200) return "연결 성공: " + m + " 모델을 사용할 수 있습니다.";
+            if (code == 400 || code == 401 || code == 403) throw new IOException("키가 올바르지 않습니다 (HTTP " + code + ")");
+            if (code == 404) throw new IOException("이 키로 " + m + " 모델을 쓸 수 없습니다 (HTTP 404)");
+            throw new IOException("확인 실패 (HTTP " + code + ")");
         }
 
         private ParsedScheduleDTO callGeminiApi(String promptText, LocalDate refDate, String apiKey) throws IOException {
@@ -3171,10 +3288,221 @@ public class ChronoCircleApp {
     }
 
     /** 자연어 문장만 입력해 일정을 빠르게 만드는 다이얼로그. */
+    /** Gemini API 키와 모델을 앱 안에서 등록, 확인, 삭제하는 설정 창. */
+    public static class GeminiKeySettingsDialog extends JDialog {
+        private final JPasswordField keyField = new JPasswordField();
+        private final JTextField modelField = new JTextField();
+        private final JLabel lblStatus = new JLabel(" ");
+        private final JLabel lblCurrent = new JLabel();
+        private boolean saved = false;
+
+        public GeminiKeySettingsDialog(Window owner) {
+            super(owner, "Gemini API 키 설정", ModalityType.APPLICATION_MODAL);
+            setSize(540, 400);
+            setLocationRelativeTo(owner);
+            setLayout(new BorderLayout());
+            getContentPane().setBackground(Color.WHITE);
+
+            JPanel body = new JPanel();
+            body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+            body.setBackground(Color.WHITE);
+            body.setBorder(new EmptyBorder(20, 24, 12, 24));
+
+            JLabel title = new JLabel("Gemini API 키 설정");
+            title.setFont(uiFont(Font.BOLD, 17));
+            title.setForeground(TEXT_PRIMARY);
+            body.add(leftAligned(title));
+            body.add(Box.createVerticalStrut(6));
+
+            JLabel sub = new JLabel("<html>AI 자연어 일정 등록에 쓸 키를 입력하세요. 키는 이 PC의 사용자 홈 폴더에만 저장되며,<br/>"
+                    + "키가 없으면 내장 한국어 파서로 분석합니다. 키 발급: Google AI Studio</html>");
+            sub.setFont(uiFont(Font.PLAIN, 12));
+            sub.setForeground(TEXT_SECONDARY);
+            body.add(leftAligned(sub));
+            body.add(Box.createVerticalStrut(10));
+
+            lblCurrent.setFont(uiFont(Font.BOLD, 12));
+            body.add(leftAligned(lblCurrent));
+            body.add(Box.createVerticalStrut(14));
+
+            JLabel lblKey = new JLabel("API 키");
+            lblKey.setFont(uiFont(Font.BOLD, 12));
+            lblKey.setForeground(TEXT_PRIMARY);
+            body.add(leftAligned(lblKey));
+            body.add(Box.createVerticalStrut(4));
+
+            JPanel keyRow = new JPanel(new BorderLayout(8, 0));
+            keyRow.setOpaque(false);
+            keyField.setFont(uiFont(Font.PLAIN, 13));
+            keyField.setBorder(new CompoundBorder(new LineBorder(PRIMARY_BORDER, 1, true), new EmptyBorder(6, 8, 6, 8)));
+            char echo = keyField.getEchoChar();
+            JCheckBox chkShow = new JCheckBox("보기");
+            chkShow.setFont(uiFont(Font.PLAIN, 12));
+            chkShow.setOpaque(false);
+            chkShow.addActionListener(e -> keyField.setEchoChar(chkShow.isSelected() ? (char) 0 : echo));
+            keyRow.add(keyField, BorderLayout.CENTER);
+            keyRow.add(chkShow, BorderLayout.EAST);
+            body.add(leftAligned(keyRow));
+            body.add(Box.createVerticalStrut(12));
+
+            JLabel lblModel = new JLabel("모델 (비우면 기본값 " + AIPromptParser.DEFAULT_MODEL + ")");
+            lblModel.setFont(uiFont(Font.BOLD, 12));
+            lblModel.setForeground(TEXT_PRIMARY);
+            body.add(leftAligned(lblModel));
+            body.add(Box.createVerticalStrut(4));
+            modelField.setFont(uiFont(Font.PLAIN, 13));
+            modelField.setBorder(new CompoundBorder(new LineBorder(BORDER_COLOR, 1, true), new EmptyBorder(6, 8, 6, 8)));
+            String savedModel = AIPromptParser.getSavedModel();
+            modelField.setText(savedModel == null ? "" : savedModel);
+            body.add(leftAligned(modelField));
+            body.add(Box.createVerticalStrut(12));
+
+            lblStatus.setFont(uiFont(Font.PLAIN, 12));
+            body.add(leftAligned(lblStatus));
+            add(body, BorderLayout.CENTER);
+
+            JPanel footer = new JPanel(new BorderLayout());
+            footer.setBackground(BG_MAIN);
+            footer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, BORDER_COLOR), new EmptyBorder(10, 14, 10, 14)));
+
+            ModernButton btnDelete = new ModernButton("저장된 키 삭제", Color.WHITE, BG_SUBTLE, DANGER_RED, BORDER_COLOR, 8);
+            btnDelete.setPreferredSize(new Dimension(120, 36));
+            btnDelete.addActionListener(e -> onDelete());
+
+            JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+            right.setOpaque(false);
+            ModernButton btnTest = new ModernButton("연결 테스트", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 8);
+            btnTest.setPreferredSize(new Dimension(100, 36));
+            btnTest.addActionListener(e -> onTest(btnTest));
+            ModernButton btnCancel = new ModernButton("닫기", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
+            btnCancel.setPreferredSize(new Dimension(72, 36));
+            btnCancel.addActionListener(e -> dispose());
+            ModernButton btnSave = new ModernButton("저장", PRIMARY_BLUE, PRIMARY_BLUE_HOVER, Color.WHITE, null, 8);
+            btnSave.setPreferredSize(new Dimension(72, 36));
+            btnSave.addActionListener(e -> onSave());
+            right.add(btnTest);
+            right.add(btnCancel);
+            right.add(btnSave);
+
+            footer.add(btnDelete, BorderLayout.WEST);
+            footer.add(right, BorderLayout.EAST);
+            add(footer, BorderLayout.SOUTH);
+
+            getRootPane().setDefaultButton(null);
+            refreshCurrentStatus();
+        }
+
+        private static JComponent leftAligned(JComponent c) {
+            c.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (c instanceof JTextField || c instanceof JPanel) {
+                c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height + 4));
+            }
+            return c;
+        }
+
+        private void refreshCurrentStatus() {
+            String source = AIPromptParser.describeKeySource();
+            if (source == null) {
+                lblCurrent.setText("현재 상태: 키 없음 — 내장 파서로 분석합니다.");
+                lblCurrent.setForeground(TEXT_MUTED);
+            } else {
+                lblCurrent.setText("현재 상태: " + source + "의 키 사용 중 ("
+                        + AIPromptParser.maskKey(AIPromptParser.resolveApiKey()) + ", 모델 " + AIPromptParser.resolveModel() + ")");
+                lblCurrent.setForeground(SUCCESS_GREEN);
+            }
+        }
+
+        private void setStatus(String text, Color color) {
+            lblStatus.setText(text);
+            lblStatus.setForeground(color);
+        }
+
+        private void onSave() {
+            String key = new String(keyField.getPassword()).trim();
+            try {
+                if (key.isEmpty()) {
+                    if (AIPromptParser.getSavedApiKey() == null) {
+                        setStatus("키를 입력해 주세요.", DANGER_RED);
+                        return;
+                    }
+                    // 키는 그대로 두고 모델만 바꾼다.
+                    AIPromptParser.saveSettings(AIPromptParser.getSavedApiKey(), modelField.getText());
+                } else {
+                    AIPromptParser.saveSettings(key, modelField.getText());
+                }
+                saved = true;
+                keyField.setText("");
+                refreshCurrentStatus();
+                String source = AIPromptParser.describeKeySource();
+                if ("시스템 속성".equals(source)) {
+                    setStatus("저장했습니다. 단, 실행 옵션(-Dgemini.api.key)의 키가 우선 적용됩니다.", WARNING_AMBER);
+                } else {
+                    setStatus("저장했습니다. 다음 AI 분석부터 바로 적용됩니다.", SUCCESS_GREEN);
+                }
+            } catch (IOException ex) {
+                setStatus("저장 실패: " + ex.getMessage(), DANGER_RED);
+            }
+        }
+
+        private void onDelete() {
+            if (AIPromptParser.getSavedApiKey() == null) {
+                setStatus("앱에 저장된 키가 없습니다.", TEXT_MUTED);
+                return;
+            }
+            int ok = JOptionPane.showConfirmDialog(this, "앱에 저장된 Gemini 키를 삭제할까요?", "키 삭제",
+                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (ok != JOptionPane.YES_OPTION) return;
+            try {
+                AIPromptParser.clearSavedApiKey();
+                saved = true;
+                refreshCurrentStatus();
+                String source = AIPromptParser.describeKeySource();
+                setStatus(source == null ? "삭제했습니다. 이제 내장 파서로 분석합니다."
+                        : "삭제했습니다. " + source + "의 키가 대신 쓰입니다.", TEXT_SECONDARY);
+            } catch (IOException ex) {
+                setStatus("삭제 실패: " + ex.getMessage(), DANGER_RED);
+            }
+        }
+
+        private void onTest(ModernButton btnTest) {
+            String typed = new String(keyField.getPassword()).trim();
+            final String key = typed.isEmpty() ? AIPromptParser.resolveApiKey() : typed;
+            if (key == null) {
+                setStatus("테스트할 키를 입력해 주세요.", DANGER_RED);
+                return;
+            }
+            final String model = modelField.getText().trim().isEmpty() ? AIPromptParser.resolveModel() : modelField.getText().trim();
+            btnTest.setEnabled(false);
+            setStatus("확인 중...", TEXT_SECONDARY);
+            new SwingWorker<String, Void>() {
+                @Override
+                protected String doInBackground() throws Exception {
+                    return AIPromptParser.testConnection(key, model);
+                }
+
+                @Override
+                protected void done() {
+                    btnTest.setEnabled(true);
+                    try {
+                        setStatus(get(), SUCCESS_GREEN);
+                    } catch (Exception ex) {
+                        Throwable c = ex.getCause() != null ? ex.getCause() : ex;
+                        setStatus(c.getMessage(), DANGER_RED);
+                    }
+                }
+            }.execute();
+        }
+
+        /** @return 창을 연 동안 키 설정이 바뀌었으면 true */
+        public boolean isSaved() {
+            return saved;
+        }
+    }
+
     public static class PromptInputModal extends JDialog {
         public PromptInputModal(Frame owner, ScheduleController controller, LocalDate targetDate) {
             super(owner, "AI 자연어 프롬프트 일정 등록", true);
-            setSize(520, 310);
+            setSize(560, 360);
             setLocationRelativeTo(owner);
             setLayout(new BorderLayout());
             getContentPane().setBackground(Color.WHITE);
@@ -3222,13 +3550,36 @@ public class ChronoCircleApp {
                 chip.addActionListener(e -> inputArea.setText(ex));
                 chips.add(chip);
             }
-            body.add(chips, BorderLayout.SOUTH);
+            JLabel lblEngine = new JLabel();
+            lblEngine.setFont(uiFont(Font.PLAIN, 11));
+            Runnable refreshEngine = () -> {
+                boolean hasKey = AIPromptParser.resolveApiKey() != null;
+                lblEngine.setText(hasKey ? "분석 엔진: Gemini (" + AIPromptParser.resolveModel() + ")" : "분석 엔진: 내장 파서 (Gemini 키 없음)");
+                lblEngine.setForeground(hasKey ? SUCCESS_GREEN : TEXT_MUTED);
+            };
+            refreshEngine.run();
+            lblEngine.setBorder(new EmptyBorder(0, 2, 0, 0));
+            JPanel southInfo = new JPanel(new BorderLayout(0, 8));
+            southInfo.setOpaque(false);
+            southInfo.add(chips, BorderLayout.NORTH);
+            southInfo.add(lblEngine, BorderLayout.SOUTH);
+            body.add(southInfo, BorderLayout.SOUTH);
 
             add(body, BorderLayout.CENTER);
 
             JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
             footer.setBackground(BG_MAIN);
             footer.setBorder(new MatteBorder(1, 0, 0, 0, BORDER_COLOR));
+
+            ModernButton btnKey = new ModernButton("AI 키 설정", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 8);
+            btnKey.setPreferredSize(new Dimension(92, 36));
+            btnKey.addActionListener(e -> {
+                new GeminiKeySettingsDialog(this).setVisible(true);
+                refreshEngine.run();
+            });
+            JPanel footerLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            footerLeft.setOpaque(false);
+            footerLeft.add(btnKey);
 
             ModernButton btnCancel = new ModernButton("취소", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
             btnCancel.setPreferredSize(new Dimension(88, 36));
@@ -3262,8 +3613,14 @@ public class ChronoCircleApp {
                 worker.execute();
             });
 
-            footer.add(btnCancel);
-            footer.add(btnAnalyze);
+            JPanel footerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+            footerRight.setOpaque(false);
+            footerRight.add(btnCancel);
+            footerRight.add(btnAnalyze);
+            footer.setLayout(new BorderLayout());
+            footer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, BORDER_COLOR), new EmptyBorder(10, 12, 10, 12)));
+            footer.add(footerLeft, BorderLayout.WEST);
+            footer.add(footerRight, BorderLayout.EAST);
             add(footer, BorderLayout.SOUTH);
         }
     }
@@ -3648,6 +4005,13 @@ public class ChronoCircleApp {
 
             viewToggleButtons = new AnimatedSegmentedControl(this::switchViewMode);
 
+            ModernButton btnAiKey = new ModernButton("AI 키", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 10);
+            btnAiKey.setFont(uiFont(Font.BOLD, 12));
+            btnAiKey.setPreferredSize(new Dimension(64, 36));
+            btnAiKey.setToolTipText("AI 자연어 일정 등록에 쓸 Gemini API 키를 등록하거나 바꿉니다.");
+            btnAiKey.addActionListener(e -> new GeminiKeySettingsDialog(this).setVisible(true));
+
+            rightControls.add(btnAiKey);
             rightControls.add(lblLiveClock);
             rightControls.add(btnToggleRightDrawer);
             rightControls.add(viewToggleButtons);
@@ -4394,6 +4758,12 @@ public class ChronoCircleApp {
                 throw new UncheckedIOException(ex);
             }
             repo = new ScheduleRepository(tmp);
+            if (System.getProperty("chronocircle.config") == null) {
+                // 앱에 저장된 실제 Gemini 키 대신 빈 임시 설정 파일을 쓴다.
+                Path cfg = tmp.resolveSibling(tmp.getFileName() + ".properties");
+                cfg.toFile().deleteOnExit();
+                System.setProperty("chronocircle.config", cfg.toString());
+            }
         } else {
             repo = new ScheduleRepository();
         }
@@ -4520,7 +4890,26 @@ public class ChronoCircleApp {
         System.out.println("[7] 삭제");
         check("일정 삭제", repo.deleteById(good.id) && !repo.findById(good.id).isPresent() && repo.findAll().size() == before, "");
 
-        System.out.println("[8] SystemTimer");
+        System.out.println("[8] Gemini 키 설정 (임시 설정 파일)");
+        try {
+            check("처음에는 저장된 키 없음", AIPromptParser.getSavedApiKey() == null, AIPromptParser.configPath().toString());
+            AIPromptParser.saveSettings("  TEST-KEY-1234567890  ", "gemini-test-model");
+            check("키 저장 후 읽기 (앞뒤 공백 제거)", "TEST-KEY-1234567890".equals(AIPromptParser.getSavedApiKey()), "");
+            check("저장한 모델 사용", "gemini-test-model".equals(AIPromptParser.resolveModel()), AIPromptParser.resolveModel());
+            boolean propSet = System.getProperty("gemini.api.key") != null;
+            check("키 출처 표시", propSet || "앱 설정".equals(AIPromptParser.describeKeySource()), AIPromptParser.describeKeySource());
+            check("키 가리기", "TEST…7890".equals(AIPromptParser.maskKey("TEST-KEY-1234567890")), AIPromptParser.maskKey("TEST-KEY-1234567890"));
+            AIPromptParser.clearSavedApiKey();
+            check("키 삭제 후 모델 설정은 유지", AIPromptParser.getSavedApiKey() == null
+                    && "gemini-test-model".equals(AIPromptParser.getSavedModel()), "");
+            AIPromptParser.saveSettings(null, null);
+            check("모델 비우면 기본 모델", System.getenv("GEMINI_MODEL") != null
+                    || AIPromptParser.DEFAULT_MODEL.equals(AIPromptParser.resolveModel()), AIPromptParser.resolveModel());
+        } catch (IOException ex) {
+            check("키 설정 파일 저장", false, ex.getMessage());
+        }
+
+        System.out.println("[9] SystemTimer");
         SystemTimer timer = new SystemTimer(null);
         check("시작 시 실제 시각 사용", !timer.isSimulated()
                 && Math.abs(Duration.between(LocalDateTime.now(), timer.now()).getSeconds()) < 2, String.valueOf(timer.now()));
