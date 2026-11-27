@@ -88,7 +88,7 @@ public class ChronoCircleApp {
         return new Font(fontFamily, style, size);
     }
 
-    /** 일정 한 건의 정보(제목, 시작/종료 일시, 장소, 설명, 알림 설정)를 담는 객체. */
+    /** 데이터 객체: 일정 한 건의 정보(제목, 시작/종료 일시, 장소, 설명, 알림 설정)를 담는 객체. */
     public static class ScheduleDTO implements Serializable {
         private static final long serialVersionUID = 1L;
         public String id;
@@ -103,6 +103,7 @@ public class ChronoCircleApp {
         public LocalDateTime nextNotificationTime;
         public int colorIndex;
 
+        //기본 생성자
         public ScheduleDTO() {
             this.id = UUID.randomUUID().toString();
             this.title = "";
@@ -113,7 +114,7 @@ public class ChronoCircleApp {
             this.repeatIntervalMinutes = 0;
             this.colorIndex = 0;
         }
-
+        //매개변수 생성자
         public ScheduleDTO(String id, String title, LocalDateTime start, LocalDateTime end,
                            String location, String description, boolean notiEnabled,
                            int notiLeadMin, int repeatMin, int colorIndex) {
@@ -129,7 +130,7 @@ public class ChronoCircleApp {
             this.colorIndex = colorIndex;
             recalculateNextNotificationTime();
         }
-
+        //임시 복사본 생성
         public ScheduleDTO copy() {
             ScheduleDTO c = new ScheduleDTO(id, title, startDateTime, endDateTime,
                     location, description, notificationEnabled,
@@ -141,7 +142,7 @@ public class ChronoCircleApp {
         /** 시작 시각과 사전 알림 시간으로 다음 알림 시각을 다시 계산한다. */
         public void recalculateNextNotificationTime() {
             if (notificationEnabled && startDateTime != null) {
-                this.nextNotificationTime = startDateTime.minusMinutes(notificationLeadMinutes);
+                this.nextNotificationTime = startDateTime.minusMinutes(notificationLeadMinutes); //ex - 14:30 - 30분
             } else {
                 this.nextNotificationTime = null;
             }
@@ -151,7 +152,7 @@ public class ChronoCircleApp {
          * @param date 확인할 날짜
          * @return 일정 기간이 해당 날짜를 포함하면 true
          */
-        public boolean occursOn(LocalDate date) {
+        public boolean occursOn(LocalDate date) { //LocalDate -> java제공 클래스 년월일을 담음
             if (startDateTime == null || endDateTime == null) return false;
             LocalDate s = startDateTime.toLocalDate();
             LocalDate e = endDateTime.toLocalDate();
@@ -162,22 +163,22 @@ public class ChronoCircleApp {
          * @param dt 기준 일시
          * @return 시작 &lt;= dt &lt; 종료이면 true
          */
-        public boolean isOngoingAt(LocalDateTime dt) {
+        public boolean isOngoingAt(LocalDateTime dt) { // 실행 중인 일정인가
             if (startDateTime == null || endDateTime == null) return false;
             return !dt.isBefore(startDateTime) && dt.isBefore(endDateTime);
         }
 
         public String getTimeRangeText() {
-            DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm");
+            DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm"); // 시간:분 형태로 지정
             return startDateTime.format(tf) + " ~ " + endDateTime.format(tf);
         }
 
         public String getShortTimeRangeText() {
-            DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm");
+            DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm"); 
             return startDateTime.format(tf) + "~" + endDateTime.format(tf);
         }
 
-        public String getNotificationSummary() {
+        public String getNotificationSummary() { // 남은 시간 알림 문구
             if (!notificationEnabled) return "알림 사용 안 함";
             String lead = formatMinutes(notificationLeadMinutes) + (notificationLeadMinutes == 0 ? " (정각)" : " 전");
             String rep = repeatIntervalMinutes > 0 ? " / " + formatMinutes(repeatIntervalMinutes) + "마다 반복" : " / 반복 없음";
@@ -193,7 +194,7 @@ public class ChronoCircleApp {
     }
 
     /** 등록 폼을 채우는 데 쓰는 자연어 문장 분석 결과. */
-    public static class ParsedScheduleDTO {
+    public static class ParsedScheduleDTO { // parser가 자연어 분석 후 데이터 저장
         public String title;
         public LocalDateTime startDateTime;
         public LocalDateTime endDateTime;
@@ -215,7 +216,7 @@ public class ChronoCircleApp {
     }
 
     /** 원형 대시보드에 그릴 일정 호(Arc) 하나의 각도와 표시 상태. */
-    public static class CircularScheduleSegment {
+    public static class CircularScheduleSegment { // 원형 대시보드에 표시할 데이터 저장
         public final ScheduleDTO schedule;
         public final double rawStartAngleDeg;
         public final double sweepAngleDeg;
@@ -223,8 +224,8 @@ public class ChronoCircleApp {
         public final boolean isOngoing;
         public final boolean isPreviewTarget;
         public final Color segmentColor;
-        public Shape renderedArcShape;
-        public Rectangle2D calloutCardBounds;
+        public Shape renderedArcShape; // 화면에 그려질 호의 모양
+        public Rectangle2D calloutCardBounds; // 호 옆에 뜨는 설명 카드의 사각형 영역
 
         public CircularScheduleSegment(ScheduleDTO schedule, double rawStartAngleDeg, double sweepAngleDeg,
                                        double rotationOffsetDeg, boolean isOngoing, boolean isPreviewTarget, Color color) {
@@ -239,16 +240,16 @@ public class ChronoCircleApp {
     }
 
     /** 키워드 검색 결과 목록에 표시할 일정 요약. */
-    public static class ScheduleSummary {
+    public static class ScheduleSummary { 
         public final String scheduleId;
         public final String title;
         public final LocalDateTime startDateTime;
         public final LocalDateTime endDateTime;
         public final String location;
-        public final String matchedSnippet;
+        public final String matchedSnippet; // 제목아래 보조설명
         public final Color badgeColor;
 
-        public ScheduleSummary(ScheduleDTO dto, String keyword) {
+        public ScheduleSummary(ScheduleDTO dto, String keyword) { // ScheduleDTO 객체를 받아 데이터를 저장
             this.scheduleId = dto.id;
             this.title = dto.title;
             this.startDateTime = dto.startDateTime;
@@ -263,11 +264,11 @@ public class ChronoCircleApp {
                 this.matchedSnippet = dto.getTimeRangeText();
             }
         }
-    }
+    } // ScheduleDTO, ParsedScheduleDTO, CircularScheduleSegment, ScheduleSummary --> 값이 섞이지 않게 함, 설계 세분화
 
-    /** 작성 중인 일정 폼 내용을 메모리에 임시 보관한다(프로그램이 종료되면 사라짐). */
-    public static class DraftSessionManager {
-        private final Map<String, ScheduleDTO> sessionCache = new HashMap<>();
+    /** 저장소: 작성 중인 일정 폼 내용을 메모리에 임시 보관한다(프로그램이 종료되면 사라짐). */
+    public static class DraftSessionManager { // 임시 보관 상자를 만든다.
+        private final Map<String, ScheduleDTO> sessionCache = new HashMap<>(); // Map 자료구조로 메모리에만 ScheduleDTO을 임시저장하는 공간 만듦
         private static final String ACTIVE_DRAFT_KEY = "CURRENT_FORM_DRAFT";
         private LocalDateTime lastSavedAt;
 
@@ -276,7 +277,7 @@ public class ChronoCircleApp {
          *
          * @param draft 현재 폼 내용
          */
-        public void saveDraft(ScheduleDTO draft) {
+        public void saveDraft(ScheduleDTO draft) { // 작성된 폼이 하나라도 있는지 확인한다.
             if (draft == null) return;
             boolean hasContent = (draft.title != null && !draft.title.trim().isEmpty())
                     || (draft.location != null && !draft.location.trim().isEmpty())
@@ -284,7 +285,7 @@ public class ChronoCircleApp {
             if (hasContent) {
                 sessionCache.put(ACTIVE_DRAFT_KEY, draft.copy());
                 lastSavedAt = LocalDateTime.now();
-            } else {
+            } else { //폼 입력 데이터가 없으면 키 삭제
                 sessionCache.remove(ACTIVE_DRAFT_KEY);
                 lastSavedAt = null;
             }
@@ -314,25 +315,64 @@ public class ChronoCircleApp {
         private final List<ScheduleDTO> schedules = new ArrayList<>();
         private final Path storagePath;
 
+        /** 데모 시각 메뉴가 쓰는 와이어프레임 기준일. 이 날짜에는 항상 샘플 일과가 들어간다. */
+        public static final LocalDate WIREFRAME_DATE = LocalDate.of(2026, 10, 15);
+
         public ScheduleRepository() {
-            this.storagePath = Paths.get(System.getProperty("user.home"), ".chronocircle_schedules_v2.ser");
+            this(defaultStoragePath());
+        }
+
+        /** @param storagePath 일정을 저장할 직렬화 파일 경로 (테스트용으로 다른 파일을 지정할 수 있다) */
+        public ScheduleRepository(Path storagePath) {
+            this.storagePath = storagePath; // 직렬화 파일(.ser) 경로
             if (!loadFromDisk()) {
                 seedInitialData();
                 saveToDisk();
             }
         }
 
+        /** 시스템 속성 chronocircle.data가 있으면 그 경로를, 없으면 사용자 홈 폴더의 기본 파일을 쓴다. */
+        public static Path defaultStoragePath() {
+            String custom = System.getProperty("chronocircle.data");
+            if (custom != null && !custom.trim().isEmpty()) return Paths.get(custom.trim());
+            return Paths.get(System.getProperty("user.home"), ".chronocircle_schedules_v2.ser");
+        }
+
+        public Path getStoragePath() {
+            return storagePath;
+        }
+
+        /**
+         * 저장된 일정을 모두 지우고 샘플 데이터로 다시 채운다. 기존 파일은 같은 폴더에 .bak으로 백업한다.
+         *
+         * @return 백업 파일 경로 (기존 파일이 없었으면 null)
+         */
+        public synchronized Path resetToSampleData() {
+            Path backup = null;
+            try {
+                if (Files.exists(storagePath)) {
+                    String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                    backup = storagePath.resolveSibling(storagePath.getFileName() + "." + stamp + ".bak");
+                    Files.copy(storagePath, backup, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException ex) {
+                backup = null;
+            }
+            seedInitialData();
+            saveToDisk();
+            return backup;
+        }
+
+        /** 와이어프레임 기준일, 오늘, 내일의 하루 일과와 이번 달 주요 일정을 샘플로 넣는다. */
         private void seedInitialData() {
             schedules.clear();
-            LocalDate wireframeDate = LocalDate.of(2026, 10, 15);
             LocalDate today = LocalDate.now();
 
-            seedDaySchedules(wireframeDate);
-            if (!today.equals(wireframeDate)) {
-                seedDaySchedules(today);
-            }
+            seedDaySchedules(WIREFRAME_DATE);
+            seedDaySchedules(today);
+            seedDaySchedules(today.plusDays(1));
 
-            LocalDate baseMonth = LocalDate.of(today.getYear(), 10, 1);
+            LocalDate baseMonth = today.withDayOfMonth(1);
             addSample(baseMonth.withDayOfMonth(5), 10, 0, 11, 30,
                     "소프트웨어설계 중간 점검", "공대 7호관 402호",
                     "Usecase Diagram 및 Sequence Diagram 발표 자료 최종 검토", true, 30, 0, 1);
@@ -436,6 +476,22 @@ public class ChronoCircleApp {
             saveToDisk();
         }
 
+        /**
+         * 반복 알림의 다음 알림 시각만 바꿔 저장한다. upsert는 알림 시각을 처음 값으로 다시 계산하므로 여기서는 쓰지 않는다.
+         *
+         * @param id 일정 ID
+         * @param next 다음 알림 시각
+         */
+        public synchronized void updateNextNotificationTime(String id, LocalDateTime next) {
+            for (ScheduleDTO s : schedules) {
+                if (Objects.equals(s.id, id)) {
+                    s.nextNotificationTime = next;
+                    saveToDisk();
+                    return;
+                }
+            }
+        }
+
         public synchronized boolean deleteById(String id) {
             boolean removed = schedules.removeIf(s -> Objects.equals(s.id, id));
             if (removed) saveToDisk();
@@ -485,8 +541,10 @@ public class ChronoCircleApp {
      * <p>Gemini API 키가 있으면 Gemini(LLM)에 JSON 형식 추출을 요청해 그 결과를 쓴다.
      * 키가 없거나, 호출이 실패하거나, 응답이 형식에 맞지 않으면 내장 정규식 규칙으로 분석한다.</p>
      *
-     * <p>키는 환경 변수 <code>GEMINI_API_KEY</code> 또는 시스템 속성 <code>gemini.api.key</code>로 지정하고,
-     * 모델은 <code>GEMINI_MODEL</code>(기본값 {@value #DEFAULT_MODEL})로 바꿀 수 있다.</p>
+     * <p>키는 앱의 [AI 키] 설정 창에서 등록하거나(사용자 홈 폴더의 <code>.chronocircle_config.properties</code>에 저장),
+     * 환경 변수 <code>GEMINI_API_KEY</code> 또는 시스템 속성 <code>gemini.api.key</code>로 지정한다.
+     * 우선순위는 시스템 속성 &gt; 앱 설정 &gt; 환경 변수이다.
+     * 모델은 설정 창이나 <code>GEMINI_MODEL</code>(기본값 {@value #DEFAULT_MODEL})로 바꿀 수 있다.</p>
      */
     public static class AIPromptParser {
         public static final String DEFAULT_MODEL = "gemini-3.8-flash";
@@ -517,15 +575,130 @@ public class ChronoCircleApp {
             }
         }
 
-        private static String resolveApiKey() {
-            String key = System.getProperty("gemini.api.key");
-            if (key == null || key.trim().isEmpty()) key = System.getenv("GEMINI_API_KEY");
-            return (key == null || key.trim().isEmpty()) ? null : key.trim();
+        private static final String CONFIG_KEY = "gemini.api.key";
+        private static final String CONFIG_MODEL = "gemini.model";
+
+        /** 시스템 속성 chronocircle.config가 있으면 그 경로를, 없으면 사용자 홈 폴더의 기본 설정 파일을 쓴다. */
+        public static Path configPath() {
+            String custom = System.getProperty("chronocircle.config");
+            if (custom != null && !custom.trim().isEmpty()) return Paths.get(custom.trim());
+            return Paths.get(System.getProperty("user.home"), ".chronocircle_config.properties");
         }
 
-        private static String resolveModel() {
-            String model = System.getenv("GEMINI_MODEL");
-            return (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model.trim();
+        private static synchronized Properties loadConfig() {
+            Properties p = new Properties();
+            Path path = configPath();
+            if (Files.exists(path)) {
+                try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                    p.load(r);
+                } catch (IOException ignored) {}
+            }
+            return p;
+        }
+
+        private static synchronized void storeConfig(Properties p) throws IOException {
+            Path path = configPath();
+            if (path.getParent() != null) Files.createDirectories(path.getParent());
+            try (Writer w = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                p.store(w, "ChronoCircle settings");
+            }
+            try {
+                Files.setPosixFilePermissions(path, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException | IOException ignored) {
+                // Windows는 POSIX 권한을 지원하지 않는다. 홈 폴더 자체가 사용자 전용이다.
+            }
+        }
+
+        private static String blankToNull(String s) {
+            return (s == null || s.trim().isEmpty()) ? null : s.trim();
+        }
+
+        /** @return 앱 설정 창에서 저장한 키 (없으면 null) */
+        public static String getSavedApiKey() {
+            return blankToNull(loadConfig().getProperty(CONFIG_KEY));
+        }
+
+        /** @return 앱 설정 창에서 저장한 모델 이름 (없으면 null) */
+        public static String getSavedModel() {
+            return blankToNull(loadConfig().getProperty(CONFIG_MODEL));
+        }
+
+        /**
+         * 키와 모델을 설정 파일에 저장한다. 값이 비어 있으면 해당 항목을 지운다.
+         *
+         * @param apiKey Gemini API 키
+         * @param model 모델 이름 (비우면 기본 모델)
+         */
+        public static void saveSettings(String apiKey, String model) throws IOException {
+            Properties p = loadConfig();
+            if (blankToNull(apiKey) == null) p.remove(CONFIG_KEY); else p.setProperty(CONFIG_KEY, apiKey.trim());
+            if (blankToNull(model) == null) p.remove(CONFIG_MODEL); else p.setProperty(CONFIG_MODEL, model.trim());
+            storeConfig(p);
+        }
+
+        /** 설정 파일에 저장한 키를 지운다 (모델 설정은 남긴다). */
+        public static void clearSavedApiKey() throws IOException {
+            Properties p = loadConfig();
+            p.remove(CONFIG_KEY);
+            storeConfig(p);
+        }
+
+        /** @return 지금 쓰이는 키의 출처: "시스템 속성", "앱 설정", "환경 변수" 또는 null(키 없음) */
+        public static String describeKeySource() {
+            if (blankToNull(System.getProperty("gemini.api.key")) != null) return "시스템 속성";
+            if (getSavedApiKey() != null) return "앱 설정";
+            if (blankToNull(System.getenv("GEMINI_API_KEY")) != null) return "환경 변수";
+            return null;
+        }
+
+        /** @return 앞 4자리와 뒤 4자리만 보이게 가린 키 */
+        public static String maskKey(String key) {
+            if (key == null) return "";
+            String k = key.trim();
+            if (k.length() <= 8) return "****";
+            return k.substring(0, 4) + "…" + k.substring(k.length() - 4);
+        }
+
+        public static String resolveApiKey() {
+            String key = blankToNull(System.getProperty("gemini.api.key"));
+            if (key == null) key = getSavedApiKey();
+            if (key == null) key = blankToNull(System.getenv("GEMINI_API_KEY"));
+            return key;
+        }
+
+        public static String resolveModel() {
+            String model = getSavedModel();
+            if (model == null) model = blankToNull(System.getenv("GEMINI_MODEL"));
+            return model == null ? DEFAULT_MODEL : model;
+        }
+
+        /**
+         * 키로 모델 정보를 조회해 키가 유효한지 확인한다. 일정 분석 요청은 보내지 않는다.
+         *
+         * @param apiKey 확인할 키
+         * @param model 확인할 모델 (비우면 기본 모델)
+         * @return 결과 안내 문구
+         * @throws IOException 키가 잘못됐거나 네트워크 오류일 때 (메시지에 원인)
+         */
+        public static String testConnection(String apiKey, String model) throws IOException {
+            String m = blankToNull(model) == null ? DEFAULT_MODEL : model.trim();
+            HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE + m).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("x-goog-api-key", apiKey.trim());
+            int code;
+            try {
+                code = conn.getResponseCode();
+            } catch (IOException e) {
+                throw new IOException("네트워크 오류: " + e.getMessage());
+            } finally {
+                conn.disconnect();
+            }
+            if (code == 200) return "연결 성공: " + m + " 모델을 사용할 수 있습니다.";
+            if (code == 400 || code == 401 || code == 403) throw new IOException("키가 올바르지 않습니다 (HTTP " + code + ")");
+            if (code == 404) throw new IOException("이 키로 " + m + " 모델을 쓸 수 없습니다 (HTTP 404)");
+            throw new IOException("확인 실패 (HTTP " + code + ")");
         }
 
         private ParsedScheduleDTO callGeminiApi(String promptText, LocalDate refDate, String apiKey) throws IOException {
@@ -1130,8 +1303,7 @@ public class ChronoCircleApp {
                     if (s.repeatIntervalMinutes > 0) {
                         LocalDateTime nextTime = triggerMin.plusMinutes(s.repeatIntervalMinutes);
                         if (!nextTime.isAfter(s.endDateTime)) {
-                            s.nextNotificationTime = nextTime;
-                            repository.upsert(s);
+                            repository.updateNextNotificationTime(s.id, nextTime);
                         }
                     }
                 }
@@ -3116,10 +3288,221 @@ public class ChronoCircleApp {
     }
 
     /** 자연어 문장만 입력해 일정을 빠르게 만드는 다이얼로그. */
+    /** Gemini API 키와 모델을 앱 안에서 등록, 확인, 삭제하는 설정 창. */
+    public static class GeminiKeySettingsDialog extends JDialog {
+        private final JPasswordField keyField = new JPasswordField();
+        private final JTextField modelField = new JTextField();
+        private final JLabel lblStatus = new JLabel(" ");
+        private final JLabel lblCurrent = new JLabel();
+        private boolean saved = false;
+
+        public GeminiKeySettingsDialog(Window owner) {
+            super(owner, "Gemini API 키 설정", ModalityType.APPLICATION_MODAL);
+            setSize(540, 400);
+            setLocationRelativeTo(owner);
+            setLayout(new BorderLayout());
+            getContentPane().setBackground(Color.WHITE);
+
+            JPanel body = new JPanel();
+            body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+            body.setBackground(Color.WHITE);
+            body.setBorder(new EmptyBorder(20, 24, 12, 24));
+
+            JLabel title = new JLabel("Gemini API 키 설정");
+            title.setFont(uiFont(Font.BOLD, 17));
+            title.setForeground(TEXT_PRIMARY);
+            body.add(leftAligned(title));
+            body.add(Box.createVerticalStrut(6));
+
+            JLabel sub = new JLabel("<html>AI 자연어 일정 등록에 쓸 키를 입력하세요. 키는 이 PC의 사용자 홈 폴더에만 저장되며,<br/>"
+                    + "키가 없으면 내장 한국어 파서로 분석합니다. 키 발급: Google AI Studio</html>");
+            sub.setFont(uiFont(Font.PLAIN, 12));
+            sub.setForeground(TEXT_SECONDARY);
+            body.add(leftAligned(sub));
+            body.add(Box.createVerticalStrut(10));
+
+            lblCurrent.setFont(uiFont(Font.BOLD, 12));
+            body.add(leftAligned(lblCurrent));
+            body.add(Box.createVerticalStrut(14));
+
+            JLabel lblKey = new JLabel("API 키");
+            lblKey.setFont(uiFont(Font.BOLD, 12));
+            lblKey.setForeground(TEXT_PRIMARY);
+            body.add(leftAligned(lblKey));
+            body.add(Box.createVerticalStrut(4));
+
+            JPanel keyRow = new JPanel(new BorderLayout(8, 0));
+            keyRow.setOpaque(false);
+            keyField.setFont(uiFont(Font.PLAIN, 13));
+            keyField.setBorder(new CompoundBorder(new LineBorder(PRIMARY_BORDER, 1, true), new EmptyBorder(6, 8, 6, 8)));
+            char echo = keyField.getEchoChar();
+            JCheckBox chkShow = new JCheckBox("보기");
+            chkShow.setFont(uiFont(Font.PLAIN, 12));
+            chkShow.setOpaque(false);
+            chkShow.addActionListener(e -> keyField.setEchoChar(chkShow.isSelected() ? (char) 0 : echo));
+            keyRow.add(keyField, BorderLayout.CENTER);
+            keyRow.add(chkShow, BorderLayout.EAST);
+            body.add(leftAligned(keyRow));
+            body.add(Box.createVerticalStrut(12));
+
+            JLabel lblModel = new JLabel("모델 (비우면 기본값 " + AIPromptParser.DEFAULT_MODEL + ")");
+            lblModel.setFont(uiFont(Font.BOLD, 12));
+            lblModel.setForeground(TEXT_PRIMARY);
+            body.add(leftAligned(lblModel));
+            body.add(Box.createVerticalStrut(4));
+            modelField.setFont(uiFont(Font.PLAIN, 13));
+            modelField.setBorder(new CompoundBorder(new LineBorder(BORDER_COLOR, 1, true), new EmptyBorder(6, 8, 6, 8)));
+            String savedModel = AIPromptParser.getSavedModel();
+            modelField.setText(savedModel == null ? "" : savedModel);
+            body.add(leftAligned(modelField));
+            body.add(Box.createVerticalStrut(12));
+
+            lblStatus.setFont(uiFont(Font.PLAIN, 12));
+            body.add(leftAligned(lblStatus));
+            add(body, BorderLayout.CENTER);
+
+            JPanel footer = new JPanel(new BorderLayout());
+            footer.setBackground(BG_MAIN);
+            footer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, BORDER_COLOR), new EmptyBorder(10, 14, 10, 14)));
+
+            ModernButton btnDelete = new ModernButton("저장된 키 삭제", Color.WHITE, BG_SUBTLE, DANGER_RED, BORDER_COLOR, 8);
+            btnDelete.setPreferredSize(new Dimension(120, 36));
+            btnDelete.addActionListener(e -> onDelete());
+
+            JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+            right.setOpaque(false);
+            ModernButton btnTest = new ModernButton("연결 테스트", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 8);
+            btnTest.setPreferredSize(new Dimension(100, 36));
+            btnTest.addActionListener(e -> onTest(btnTest));
+            ModernButton btnCancel = new ModernButton("닫기", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
+            btnCancel.setPreferredSize(new Dimension(72, 36));
+            btnCancel.addActionListener(e -> dispose());
+            ModernButton btnSave = new ModernButton("저장", PRIMARY_BLUE, PRIMARY_BLUE_HOVER, Color.WHITE, null, 8);
+            btnSave.setPreferredSize(new Dimension(72, 36));
+            btnSave.addActionListener(e -> onSave());
+            right.add(btnTest);
+            right.add(btnCancel);
+            right.add(btnSave);
+
+            footer.add(btnDelete, BorderLayout.WEST);
+            footer.add(right, BorderLayout.EAST);
+            add(footer, BorderLayout.SOUTH);
+
+            getRootPane().setDefaultButton(null);
+            refreshCurrentStatus();
+        }
+
+        private static JComponent leftAligned(JComponent c) {
+            c.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (c instanceof JTextField || c instanceof JPanel) {
+                c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height + 4));
+            }
+            return c;
+        }
+
+        private void refreshCurrentStatus() {
+            String source = AIPromptParser.describeKeySource();
+            if (source == null) {
+                lblCurrent.setText("현재 상태: 키 없음 — 내장 파서로 분석합니다.");
+                lblCurrent.setForeground(TEXT_MUTED);
+            } else {
+                lblCurrent.setText("현재 상태: " + source + "의 키 사용 중 ("
+                        + AIPromptParser.maskKey(AIPromptParser.resolveApiKey()) + ", 모델 " + AIPromptParser.resolveModel() + ")");
+                lblCurrent.setForeground(SUCCESS_GREEN);
+            }
+        }
+
+        private void setStatus(String text, Color color) {
+            lblStatus.setText(text);
+            lblStatus.setForeground(color);
+        }
+
+        private void onSave() {
+            String key = new String(keyField.getPassword()).trim();
+            try {
+                if (key.isEmpty()) {
+                    if (AIPromptParser.getSavedApiKey() == null) {
+                        setStatus("키를 입력해 주세요.", DANGER_RED);
+                        return;
+                    }
+                    // 키는 그대로 두고 모델만 바꾼다.
+                    AIPromptParser.saveSettings(AIPromptParser.getSavedApiKey(), modelField.getText());
+                } else {
+                    AIPromptParser.saveSettings(key, modelField.getText());
+                }
+                saved = true;
+                keyField.setText("");
+                refreshCurrentStatus();
+                String source = AIPromptParser.describeKeySource();
+                if ("시스템 속성".equals(source)) {
+                    setStatus("저장했습니다. 단, 실행 옵션(-Dgemini.api.key)의 키가 우선 적용됩니다.", WARNING_AMBER);
+                } else {
+                    setStatus("저장했습니다. 다음 AI 분석부터 바로 적용됩니다.", SUCCESS_GREEN);
+                }
+            } catch (IOException ex) {
+                setStatus("저장 실패: " + ex.getMessage(), DANGER_RED);
+            }
+        }
+
+        private void onDelete() {
+            if (AIPromptParser.getSavedApiKey() == null) {
+                setStatus("앱에 저장된 키가 없습니다.", TEXT_MUTED);
+                return;
+            }
+            int ok = JOptionPane.showConfirmDialog(this, "앱에 저장된 Gemini 키를 삭제할까요?", "키 삭제",
+                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (ok != JOptionPane.YES_OPTION) return;
+            try {
+                AIPromptParser.clearSavedApiKey();
+                saved = true;
+                refreshCurrentStatus();
+                String source = AIPromptParser.describeKeySource();
+                setStatus(source == null ? "삭제했습니다. 이제 내장 파서로 분석합니다."
+                        : "삭제했습니다. " + source + "의 키가 대신 쓰입니다.", TEXT_SECONDARY);
+            } catch (IOException ex) {
+                setStatus("삭제 실패: " + ex.getMessage(), DANGER_RED);
+            }
+        }
+
+        private void onTest(ModernButton btnTest) {
+            String typed = new String(keyField.getPassword()).trim();
+            final String key = typed.isEmpty() ? AIPromptParser.resolveApiKey() : typed;
+            if (key == null) {
+                setStatus("테스트할 키를 입력해 주세요.", DANGER_RED);
+                return;
+            }
+            final String model = modelField.getText().trim().isEmpty() ? AIPromptParser.resolveModel() : modelField.getText().trim();
+            btnTest.setEnabled(false);
+            setStatus("확인 중...", TEXT_SECONDARY);
+            new SwingWorker<String, Void>() {
+                @Override
+                protected String doInBackground() throws Exception {
+                    return AIPromptParser.testConnection(key, model);
+                }
+
+                @Override
+                protected void done() {
+                    btnTest.setEnabled(true);
+                    try {
+                        setStatus(get(), SUCCESS_GREEN);
+                    } catch (Exception ex) {
+                        Throwable c = ex.getCause() != null ? ex.getCause() : ex;
+                        setStatus(c.getMessage(), DANGER_RED);
+                    }
+                }
+            }.execute();
+        }
+
+        /** @return 창을 연 동안 키 설정이 바뀌었으면 true */
+        public boolean isSaved() {
+            return saved;
+        }
+    }
+
     public static class PromptInputModal extends JDialog {
         public PromptInputModal(Frame owner, ScheduleController controller, LocalDate targetDate) {
             super(owner, "AI 자연어 프롬프트 일정 등록", true);
-            setSize(520, 310);
+            setSize(560, 360);
             setLocationRelativeTo(owner);
             setLayout(new BorderLayout());
             getContentPane().setBackground(Color.WHITE);
@@ -3167,13 +3550,36 @@ public class ChronoCircleApp {
                 chip.addActionListener(e -> inputArea.setText(ex));
                 chips.add(chip);
             }
-            body.add(chips, BorderLayout.SOUTH);
+            JLabel lblEngine = new JLabel();
+            lblEngine.setFont(uiFont(Font.PLAIN, 11));
+            Runnable refreshEngine = () -> {
+                boolean hasKey = AIPromptParser.resolveApiKey() != null;
+                lblEngine.setText(hasKey ? "분석 엔진: Gemini (" + AIPromptParser.resolveModel() + ")" : "분석 엔진: 내장 파서 (Gemini 키 없음)");
+                lblEngine.setForeground(hasKey ? SUCCESS_GREEN : TEXT_MUTED);
+            };
+            refreshEngine.run();
+            lblEngine.setBorder(new EmptyBorder(0, 2, 0, 0));
+            JPanel southInfo = new JPanel(new BorderLayout(0, 8));
+            southInfo.setOpaque(false);
+            southInfo.add(chips, BorderLayout.NORTH);
+            southInfo.add(lblEngine, BorderLayout.SOUTH);
+            body.add(southInfo, BorderLayout.SOUTH);
 
             add(body, BorderLayout.CENTER);
 
             JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
             footer.setBackground(BG_MAIN);
             footer.setBorder(new MatteBorder(1, 0, 0, 0, BORDER_COLOR));
+
+            ModernButton btnKey = new ModernButton("AI 키 설정", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 8);
+            btnKey.setPreferredSize(new Dimension(92, 36));
+            btnKey.addActionListener(e -> {
+                new GeminiKeySettingsDialog(this).setVisible(true);
+                refreshEngine.run();
+            });
+            JPanel footerLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            footerLeft.setOpaque(false);
+            footerLeft.add(btnKey);
 
             ModernButton btnCancel = new ModernButton("취소", Color.WHITE, BG_SUBTLE, TEXT_PRIMARY, BORDER_COLOR, 8);
             btnCancel.setPreferredSize(new Dimension(88, 36));
@@ -3207,8 +3613,14 @@ public class ChronoCircleApp {
                 worker.execute();
             });
 
-            footer.add(btnCancel);
-            footer.add(btnAnalyze);
+            JPanel footerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+            footerRight.setOpaque(false);
+            footerRight.add(btnCancel);
+            footerRight.add(btnAnalyze);
+            footer.setLayout(new BorderLayout());
+            footer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, BORDER_COLOR), new EmptyBorder(10, 12, 10, 12)));
+            footer.add(footerLeft, BorderLayout.WEST);
+            footer.add(footerRight, BorderLayout.EAST);
             add(footer, BorderLayout.SOUTH);
         }
     }
@@ -3344,7 +3756,7 @@ public class ChronoCircleApp {
         private final ScheduleController controller;
         private final SystemTimer systemTimer;
 
-        private LocalDate selectedDate = LocalDate.of(2026, 10, 15);
+        private LocalDate selectedDate = LocalDate.now();
         private String currentViewMode = "DAY";
 
         private JTextField searchField;
@@ -3405,7 +3817,7 @@ public class ChronoCircleApp {
 
             refreshAllViews();
             installTrayIcon();
-            this.systemTimer.setSimulationTarget(LocalDateTime.of(2026, 10, 15, 12, 18, 0));
+            // 시작할 때는 PC의 실제 시각을 그대로 쓴다. 데모 시각은 상단 시계 메뉴에서 직접 고를 때만 적용한다.
             this.systemTimer.start();
         }
 
@@ -3568,12 +3980,12 @@ public class ChronoCircleApp {
             JPanel rightControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
             rightControls.setOpaque(false);
 
-            lblLiveClock = new JLabel("🕒 12:18");
+            lblLiveClock = new JLabel("🕒 " + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")));
             lblLiveClock.setFont(uiFont(Font.BOLD, 12));
             lblLiveClock.setForeground(PRIMARY_BLUE);
             lblLiveClock.setBorder(new EmptyBorder(0, 4, 0, 4));
             lblLiveClock.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            lblLiveClock.setToolTipText("클릭하면 시뮬레이션 시각(+15분 / 현재 PC 실제 시각 / 데모 시각 12:18)을 전환하거나 알림을 즉시 테스트할 수 있습니다.");
+            lblLiveClock.setToolTipText("클릭하면 시뮬레이션 시각(+15분 / 현재 PC 실제 시각 / 데모 시각 2026-10-15 12:18)을 전환하거나 알림을 즉시 테스트할 수 있습니다.");
             lblLiveClock.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
@@ -3593,6 +4005,13 @@ public class ChronoCircleApp {
 
             viewToggleButtons = new AnimatedSegmentedControl(this::switchViewMode);
 
+            ModernButton btnAiKey = new ModernButton("AI 키", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 10);
+            btnAiKey.setFont(uiFont(Font.BOLD, 12));
+            btnAiKey.setPreferredSize(new Dimension(64, 36));
+            btnAiKey.setToolTipText("AI 자연어 일정 등록에 쓸 Gemini API 키를 등록하거나 바꿉니다.");
+            btnAiKey.addActionListener(e -> new GeminiKeySettingsDialog(this).setVisible(true));
+
+            rightControls.add(btnAiKey);
             rightControls.add(lblLiveClock);
             rightControls.add(btnToggleRightDrawer);
             rightControls.add(viewToggleButtons);
@@ -3670,7 +4089,7 @@ public class ChronoCircleApp {
             btnPrevDay.setFont(uiFont(Font.BOLD, 16));
             btnPrevDay.addActionListener(e -> changeSelectedDate(selectedDate.minusDays(1)));
 
-            lblCurrentDateTitle = new JLabel("2026년 10월 15일 (목)", SwingConstants.CENTER);
+            lblCurrentDateTitle = new JLabel("", SwingConstants.CENTER);
             lblCurrentDateTitle.setFont(uiFont(Font.BOLD, 24));
             lblCurrentDateTitle.setForeground(TEXT_PRIMARY);
 
@@ -3679,12 +4098,13 @@ public class ChronoCircleApp {
             btnNextDay.setFont(uiFont(Font.BOLD, 16));
             btnNextDay.addActionListener(e -> changeSelectedDate(selectedDate.plusDays(1)));
 
-            ModernButton btnTodayJump = new ModernButton("기준일(10/15)", Color.WHITE, PRIMARY_LIGHT_BG, PRIMARY_BLUE, PRIMARY_BORDER, 10);
+            ModernButton btnTodayJump = new ModernButton("오늘", Color.WHITE, PRIMARY_LIGHT_BG, PRIMARY_BLUE, PRIMARY_BORDER, 10);
             btnTodayJump.setFont(uiFont(Font.BOLD, 11));
-            btnTodayJump.setPreferredSize(new Dimension(112, 30));
+            btnTodayJump.setPreferredSize(new Dimension(72, 30));
+            btnTodayJump.setToolTipText("오늘 날짜와 PC의 실제 시각으로 돌아갑니다.");
             btnTodayJump.addActionListener(e -> {
-                systemTimer.setSimulationTarget(LocalDateTime.of(2026, 10, 15, 12, 18, 0));
-                changeSelectedDate(LocalDate.of(2026, 10, 15));
+                systemTimer.resetSimulationOffset();
+                changeSelectedDate(LocalDate.now());
                 controller.resyncDashboardToCurrentTime(circularCanvasPanel, systemTimer);
             });
 
@@ -3961,7 +4381,7 @@ public class ChronoCircleApp {
             LocalDateTime now = systemTimer.now();
             lblLiveClock.setText(String.format("🕒 %s %s",
                     now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
-                    systemTimer.isSimulated() ? "(데모 시각)" : ""));
+                    systemTimer.isSimulated() ? "(시뮬레이션)" : ""));
 
             controller.checkAndDispatchNotifications(now);
 
@@ -4314,12 +4734,46 @@ public class ChronoCircleApp {
     public static void main(String[] args) {
         initFontAndLook();
 
-        ScheduleRepository repo = new ScheduleRepository();
+        boolean verifyMode = args.length > 0 && "--verify-headless".equals(args[0]);
+
+        // 데이터 재구축 모드 : --reset-data 인자를 주면 기존 파일을 백업하고 샘플 데이터로 다시 만든 뒤 종료한다.
+        if (args.length > 0 && "--reset-data".equals(args[0])) {
+            ScheduleRepository resetRepo = new ScheduleRepository();
+            Path backup = resetRepo.resetToSampleData();
+            System.out.println("[ChronoCircle] 샘플 데이터로 재구축 완료: " + resetRepo.getStoragePath()
+                    + " (" + resetRepo.findAll().size() + "건)");
+            System.out.println("[ChronoCircle] 기존 데이터 백업: " + (backup != null ? backup : "없음"));
+            return;
+        }
+
+        // 검증 모드는 실제 데이터 파일을 건드리지 않도록 임시 파일에 샘플 데이터를 만들어 쓴다.
+        ScheduleRepository repo;
+        if (verifyMode) {
+            Path tmp;
+            try {
+                tmp = Files.createTempFile("chronocircle_verify_", ".ser");
+                Files.delete(tmp);
+                tmp.toFile().deleteOnExit();
+            } catch (IOException ex) {
+                throw new UncheckedIOException(ex);
+            }
+            repo = new ScheduleRepository(tmp);
+            if (System.getProperty("chronocircle.config") == null) {
+                // 앱에 저장된 실제 Gemini 키 대신 빈 임시 설정 파일을 쓴다.
+                Path cfg = tmp.resolveSibling(tmp.getFileName() + ".properties");
+                cfg.toFile().deleteOnExit();
+                System.setProperty("chronocircle.config", cfg.toString());
+            }
+        } else {
+            repo = new ScheduleRepository();
+        }
         DraftSessionManager draftMgr = new DraftSessionManager();
         AIPromptParser parser = new AIPromptParser();
+        // Controller로 저장소, 임시보관함, 파서를 연결
         ScheduleController controller = new ScheduleController(repo, draftMgr, parser);
 
-        if (args.length > 0 && "--verify-headless".equals(args[0])) {
+        // headless 검증 모드 : --verify-headless 인자를 주면 컨트롤러의 핵심 함수들만 호출해 콘솔화면에 출력(간단한 테스트)
+        if (verifyMode) {
             String outDir = args.length > 1 ? args[1] : ".";
             runSelfVerificationAndRenderPreviews(controller, outDir);
             return;
@@ -4331,34 +4785,142 @@ public class ChronoCircleApp {
         });
     }
 
+    // 콘솔 화면 테스트 : 핵심 기능을 실제 날짜 기준으로 호출하고 PASS/FAIL을 출력한다. 하나라도 실패하면 종료 코드 1.
+    private static int verifyFailures = 0;
+
+    private static void check(String name, boolean ok, String detail) {
+        if (!ok) verifyFailures++;
+        System.out.println((ok ? "  [PASS] " : "  [FAIL] ") + name + (detail == null || detail.isEmpty() ? "" : " -> " + detail));
+    }
+
     private static void runSelfVerificationAndRenderPreviews(ScheduleController controller, String outDir) {
-        System.out.println("=== [ChronoCircle] 6대 핵심 명세 함수 및 UI 렌더링 검증 시작 ===");
+        System.out.println("=== [ChronoCircle] 핵심 기능 검증 시작 ===");
+        ScheduleRepository repo = controller.getRepository();
+        LocalDate today = LocalDate.now();
+        LocalDate wf = ScheduleRepository.WIREFRAME_DATE;
+        System.out.println("데이터 파일(임시): " + repo.getStoragePath());
 
-        ParsedScheduleDTO parsed = controller.parseNaturalLanguagePrompt(
-                "내일 오후 3시 소프트웨어공학 연구실에서 캡스톤 프로젝트 최종 회의");
-        System.out.println("[1] parseNaturalLanguagePrompt 결과 -> 제목: " + parsed.title
-                + " | 시작: " + parsed.startDateTime + " | 종료: " + parsed.endDateTime
-                + " | 장소: " + parsed.location);
+        System.out.println("[0] 샘플 데이터");
+        check("기준일(" + wf + ") 일과 5건", repo.findByDate(wf).size() == 5, repo.findByDate(wf).size() + "건");
+        check("오늘(" + today + ") 일과 5건 이상", repo.findByDate(today).size() >= 5, repo.findByDate(today).size() + "건");
+        check("내일 일과 5건 이상", repo.findByDate(today.plusDays(1)).size() >= 5, repo.findByDate(today.plusDays(1)).size() + "건");
+        long thisMonth = repo.findAll().stream().filter(s -> YearMonth.from(s.startDateTime).equals(YearMonth.from(today))).count();
+        check("이번 달 일정 존재", thisMonth >= 10, thisMonth + "건");
+        boolean allValid = repo.findAll().stream().allMatch(s -> s.title != null && !s.title.isEmpty() && s.endDateTime.isAfter(s.startDateTime));
+        check("모든 샘플의 제목/시간 유효", allValid, "");
 
-        ScheduleDTO draftSample = new ScheduleDTO(null, "작성 중이던 임시 일정",
-                LocalDateTime.of(2026, 10, 15, 17, 0), LocalDateTime.of(2026, 10, 15, 18, 0),
+        System.out.println("[1] parseNaturalLanguagePrompt");
+        ParsedScheduleDTO p1 = controller.parseNaturalLanguagePrompt("내일 오후 3시 소프트웨어공학 연구실에서 캡스톤 프로젝트 최종 회의");
+        check("'내일 오후 3시' -> 내일 15:00", p1.startDateTime != null
+                && p1.startDateTime.equals(LocalDateTime.of(today.plusDays(1), LocalTime.of(15, 0))), String.valueOf(p1.startDateTime));
+        check("종료 시각이 시작 이후", p1.endDateTime != null && p1.endDateTime.isAfter(p1.startDateTime), String.valueOf(p1.endDateTime));
+        check("장소 추출", p1.location != null && p1.location.contains("연구실"), p1.location);
+        check("제목 추출", p1.title != null && !p1.title.isEmpty(), p1.title + " | " + p1.parseConfidenceNote);
+        ParsedScheduleDTO p2 = controller.parseNaturalLanguagePrompt("12월 3일 오전 10시 30분부터 12시까지 공대 7호관에서 팀 회의");
+        check("'12월 3일 10:30~12:00'", p2.startDateTime != null && p2.startDateTime.getMonthValue() == 12
+                && p2.startDateTime.getDayOfMonth() == 3 && p2.startDateTime.toLocalTime().equals(LocalTime.of(10, 30))
+                && p2.endDateTime != null && p2.endDateTime.toLocalTime().equals(LocalTime.of(12, 0)),
+                p2.startDateTime + " ~ " + p2.endDateTime + " | " + p2.location);
+        ParsedScheduleDTO p3 = controller.parseNaturalLanguagePrompt("   ");
+        check("빈 문장 처리", p3 != null && p3.startDateTime != null, p3 == null ? "null" : p3.parseConfidenceNote);
+
+        System.out.println("[2] saveOrUpdateSchedule / 임시 저장");
+        ScheduleDTO draft = new ScheduleDTO(null, "작성 중이던 임시 일정",
+                LocalDateTime.of(today, LocalTime.of(17, 0)), LocalDateTime.of(today, LocalTime.of(18, 0)),
                 "공대 도서관", "실수로 창을 닫아도 보존되는 메모", true, 30, 0, 2);
-        boolean draftOk = controller.saveOrUpdateSchedule(draftSample, true);
-        System.out.println("[2] saveOrUpdateSchedule(isDraft=true) -> " + draftOk
-                + " | Draft 복원 확인: " + controller.getDraftManager().getDraft().title);
-        controller.getDraftManager().clearDraft();
+        boolean draftOk = controller.saveOrUpdateSchedule(draft, true);
+        check("임시 저장 후 복원", draftOk && controller.getDraftManager().hasDraft()
+                && "작성 중이던 임시 일정".equals(controller.getDraftManager().getDraft().title), "");
+        controller.saveOrUpdateSchedule(new ScheduleDTO(), true);
+        check("빈 폼 임시 저장 시 보관본 삭제", !controller.getDraftManager().hasDraft(), "");
 
-        List<CircularScheduleSegment> segs = controller.calculateCircularSegments(
-                LocalDate.of(2026, 10, 15), LocalTime.of(12, 18));
-        System.out.println("[3] calculateCircularSegments(2026-10-15, 12:18) -> 세그먼트 수: " + segs.size());
+        int before = repo.findAll().size();
+        ScheduleDTO bad = new ScheduleDTO(null, "  ", LocalDateTime.of(today, LocalTime.of(9, 0)),
+                LocalDateTime.of(today, LocalTime.of(10, 0)), "", "", false, 0, 0, 0);
+        check("제목 없음 -> 거부", !controller.saveOrUpdateSchedule(bad, false), "");
+        ScheduleDTO badTime = new ScheduleDTO(null, "시간 오류", LocalDateTime.of(today, LocalTime.of(10, 0)),
+                LocalDateTime.of(today, LocalTime.of(9, 0)), "", "", false, 0, 0, 0);
+        check("종료가 시작보다 빠름 -> 거부", !controller.saveOrUpdateSchedule(badTime, false), "");
+        ScheduleDTO good = new ScheduleDTO(null, "검증용 회의", LocalDateTime.of(today, LocalTime.of(22, 0)),
+                LocalDateTime.of(today, LocalTime.of(23, 0)), "검증실", "자동 검증", true, 10, 5, 1);
+        controller.getDraftManager().saveDraft(draft);
+        check("정상 일정 저장", controller.saveOrUpdateSchedule(good, false) && repo.findAll().size() == before + 1, "");
+        check("정상 저장 후 임시 보관본 삭제", !controller.getDraftManager().hasDraft(), "");
+        good.title = "검증용 회의(수정)";
+        controller.saveOrUpdateSchedule(good, false);
+        check("같은 ID로 수정", repo.findAll().size() == before + 1
+                && repo.findById(good.id).map(s -> s.title.equals("검증용 회의(수정)")).orElse(false), "");
+        check("파일에 저장됨", new ScheduleRepository(repo.getStoragePath()).findById(good.id).isPresent(), "");
 
-        int notiCount = controller.checkAndDispatchNotifications(LocalDateTime.of(2026, 10, 15, 10, 30));
-        System.out.println("[4] checkAndDispatchNotifications(2026-10-15 10:30) -> 발송 건수: " + notiCount);
+        System.out.println("[3] 시간 겹침 검사");
+        List<ScheduleDTO> ov = repo.findOverlapping(LocalDateTime.of(wf, LocalTime.of(12, 0)), LocalDateTime.of(wf, LocalTime.of(14, 0)), null);
+        check("기준일 12~14시와 겹치는 일정 2건(특강, 실습)", ov.size() == 2, ov.size() + "건");
+        List<ScheduleDTO> ov2 = repo.findOverlapping(LocalDateTime.of(wf, LocalTime.of(9, 30)), LocalDateTime.of(wf, LocalTime.of(11, 0)), null);
+        check("경계가 맞닿는 시간대는 겹침 아님", ov2.isEmpty(), ov2.size() + "건");
 
-        List<ScheduleSummary> searchRes = controller.searchSchedulesByKeyword(
-                "소프트웨어공학", LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31));
-        System.out.println("[5] searchSchedulesByKeyword('소프트웨어공학') -> 검색 건수: " + searchRes.size());
+        System.out.println("[4] calculateCircularSegments");
+        List<CircularScheduleSegment> segs = controller.calculateCircularSegments(wf, LocalTime.of(12, 18));
+        check("기준일 세그먼트 5개", segs.size() == 5, segs.size() + "개");
+        long ongoing = segs.stream().filter(sg -> sg.isOngoing).count();
+        boolean ongoingIsLecture = segs.stream().anyMatch(sg -> sg.isOngoing && sg.schedule.title.equals("소프트웨어공학 특강"));
+        check("12:18 진행 중 = 소프트웨어공학 특강 1건", ongoing == 1 && ongoingIsLecture, "");
+        CircularScheduleSegment first = segs.get(0);
+        check("08:30~09:30 각도 (시작 142.5°, 중심각 -15°)", Math.abs(first.rawStartAngleDeg - 142.5) < 0.01
+                && Math.abs(first.sweepAngleDeg + 15.0) < 0.01, first.rawStartAngleDeg + ", " + first.sweepAngleDeg);
 
-        System.out.println("=== [ChronoCircle] 모든 검증 완료 ===");
+        System.out.println("[5] checkAndDispatchNotifications");
+        int n1 = controller.checkAndDispatchNotifications(LocalDateTime.of(wf, LocalTime.of(10, 30)));
+        check("기준일 10:30 알림 1건 (특강 30분 전)", n1 == 1, n1 + "건");
+        int n2 = controller.checkAndDispatchNotifications(LocalDateTime.of(wf, LocalTime.of(10, 30, 30)));
+        check("같은 알림 중복 발송 안 함", n2 == 0, n2 + "건");
+        int n3 = controller.checkAndDispatchNotifications(LocalDateTime.of(wf, LocalTime.of(8, 20)));
+        check("알림 끈 일정(모닝 러닝)은 발송 안 함", n3 == 0, n3 + "건");
+        int r1 = controller.checkAndDispatchNotifications(LocalDateTime.of(today, LocalTime.of(21, 50)));
+        LocalDateTime nextRep = repo.findById(good.id).map(s -> s.nextNotificationTime).orElse(null);
+        check("반복 알림 발송 후 다음 알림 +5분", r1 >= 1 && LocalDateTime.of(today, LocalTime.of(21, 55)).equals(nextRep), r1 + "건, 다음 " + nextRep);
+
+        System.out.println("[6] searchSchedulesByKeyword");
+        List<ScheduleSummary> sr = controller.searchSchedulesByKeyword("소프트웨어공학", wf.withDayOfMonth(1), wf.withDayOfMonth(wf.lengthOfMonth()));
+        check("기준일이 있는 달에서 '소프트웨어공학' 검색", sr.size() >= 2, sr.size() + "건");
+        List<ScheduleSummary> sr2 = controller.searchSchedulesByKeyword("해커톤", today.withDayOfMonth(1), today.withDayOfMonth(today.lengthOfMonth()));
+        check("이번 달 '해커톤' 검색 1건", sr2.size() == 1, sr2.size() + "건");
+        check("빈 검색어 -> 빈 결과", controller.searchSchedulesByKeyword(" ", null, null).isEmpty(), "");
+        check("대소문자 무시 검색", !controller.searchSchedulesByKeyword("dfs", null, null).isEmpty(), "");
+
+        System.out.println("[7] 삭제");
+        check("일정 삭제", repo.deleteById(good.id) && !repo.findById(good.id).isPresent() && repo.findAll().size() == before, "");
+
+        System.out.println("[8] Gemini 키 설정 (임시 설정 파일)");
+        try {
+            check("처음에는 저장된 키 없음", AIPromptParser.getSavedApiKey() == null, AIPromptParser.configPath().toString());
+            AIPromptParser.saveSettings("  TEST-KEY-1234567890  ", "gemini-test-model");
+            check("키 저장 후 읽기 (앞뒤 공백 제거)", "TEST-KEY-1234567890".equals(AIPromptParser.getSavedApiKey()), "");
+            check("저장한 모델 사용", "gemini-test-model".equals(AIPromptParser.resolveModel()), AIPromptParser.resolveModel());
+            boolean propSet = System.getProperty("gemini.api.key") != null;
+            check("키 출처 표시", propSet || "앱 설정".equals(AIPromptParser.describeKeySource()), AIPromptParser.describeKeySource());
+            check("키 가리기", "TEST…7890".equals(AIPromptParser.maskKey("TEST-KEY-1234567890")), AIPromptParser.maskKey("TEST-KEY-1234567890"));
+            AIPromptParser.clearSavedApiKey();
+            check("키 삭제 후 모델 설정은 유지", AIPromptParser.getSavedApiKey() == null
+                    && "gemini-test-model".equals(AIPromptParser.getSavedModel()), "");
+            AIPromptParser.saveSettings(null, null);
+            check("모델 비우면 기본 모델", System.getenv("GEMINI_MODEL") != null
+                    || AIPromptParser.DEFAULT_MODEL.equals(AIPromptParser.resolveModel()), AIPromptParser.resolveModel());
+        } catch (IOException ex) {
+            check("키 설정 파일 저장", false, ex.getMessage());
+        }
+
+        System.out.println("[9] SystemTimer");
+        SystemTimer timer = new SystemTimer(null);
+        check("시작 시 실제 시각 사용", !timer.isSimulated()
+                && Math.abs(Duration.between(LocalDateTime.now(), timer.now()).getSeconds()) < 2, String.valueOf(timer.now()));
+        timer.addSimulationMinutes(15);
+        check("+15분 시뮬레이션", timer.isSimulated(), String.valueOf(timer.now()));
+        timer.resetSimulationOffset();
+        check("실제 시각으로 복귀", !timer.isSimulated(), "");
+
+        System.out.println(verifyFailures == 0
+                ? "=== [ChronoCircle] 모든 검증 통과 ==="
+                : "=== [ChronoCircle] 검증 실패 " + verifyFailures + "건 ===");
+        if (verifyFailures > 0) System.exit(1);
     }
 }
