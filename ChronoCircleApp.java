@@ -310,6 +310,60 @@ public class ChronoCircleApp {
         }
     }
 
+    /** 사용자 홈 폴더의 <code>.chronocircle_config.properties</code>에 앱 설정(Gemini 키, 시작 옵션)을 저장한다. */
+    public static class AppSettings {
+        /** 시작할 때 오늘 샘플 일정을 현재 시각 기준으로 다시 배치할지 (기본값: 켬) */
+        public static final String ALIGN_SAMPLES_ON_STARTUP = "startup.alignSamplesToNow";
+
+        private AppSettings() {}
+
+        /** 시스템 속성 chronocircle.config가 있으면 그 경로를, 없으면 사용자 홈 폴더의 기본 설정 파일을 쓴다. */
+        public static Path configPath() {
+            String custom = System.getProperty("chronocircle.config");
+            if (custom != null && !custom.trim().isEmpty()) return Paths.get(custom.trim());
+            return Paths.get(System.getProperty("user.home"), ".chronocircle_config.properties");
+        }
+
+        public static synchronized Properties load() {
+            Properties p = new Properties();
+            Path path = configPath();
+            if (Files.exists(path)) {
+                try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                    p.load(r);
+                } catch (IOException ignored) {}
+            }
+            return p;
+        }
+
+        public static synchronized void store(Properties p) throws IOException {
+            Path path = configPath();
+            if (path.getParent() != null) Files.createDirectories(path.getParent());
+            try (Writer w = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                p.store(w, "ChronoCircle settings");
+            }
+            try {
+                Files.setPosixFilePermissions(path, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException | IOException ignored) {
+                // Windows는 POSIX 권한을 지원하지 않는다. 홈 폴더 자체가 사용자 전용이다.
+            }
+        }
+
+        public static boolean getBoolean(String key, boolean defaultValue) {
+            String v = load().getProperty(key);
+            return v == null ? defaultValue : Boolean.parseBoolean(v.trim());
+        }
+
+        public static synchronized void setBoolean(String key, boolean value) throws IOException {
+            Properties p = load();
+            p.setProperty(key, Boolean.toString(value));
+            store(p);
+        }
+
+        public static boolean isAlignSamplesOnStartup() {
+            return getBoolean(ALIGN_SAMPLES_ON_STARTUP, true);
+        }
+    }
+
     /** 일정 목록을 관리하고 사용자 홈 폴더의 <code>.chronocircle_schedules_v2.ser</code> 파일에 직렬화해 저장한다. */
     public static class ScheduleRepository {
         private final List<ScheduleDTO> schedules = new ArrayList<>();
@@ -393,26 +447,84 @@ public class ChronoCircleApp {
                     "진도 보고서 제출 및 향후 개발 일정 논의", true, 30, 0, 5);
         }
 
+        /**
+         * 하루 샘플 일과 한 건의 틀. 고정 시각(기본 배치)과 현재 시각 기준 상대 위치(재배치용)를 함께 가진다.
+         * 재배치하면 특강은 진행 중, 실습은 약 2분 뒤 알림, 나머지는 이전/이후 일정이 된다.
+         */
+        private static final class DaySample {
+            final String title, location, description;
+            final boolean notify;
+            final int leadMin, colorIdx;
+            final int sh, sm, eh, em;
+            final int offsetMin, durationMin;
+
+            DaySample(String title, String location, String description, boolean notify, int leadMin, int colorIdx,
+                      int sh, int sm, int eh, int em, int offsetMin, int durationMin) {
+                this.title = title; this.location = location; this.description = description;
+                this.notify = notify; this.leadMin = leadMin; this.colorIdx = colorIdx;
+                this.sh = sh; this.sm = sm; this.eh = eh; this.em = em;
+                this.offsetMin = offsetMin; this.durationMin = durationMin;
+            }
+        }
+
+        private static final List<DaySample> DAY_SAMPLES = List.of(
+                new DaySample("모닝 러닝 & 스트레칭", "대운동장 트랙",
+                        "상쾌한 하루 시작을 위한 5km 조깅 및 코어 스트레칭", false, 10, 3,
+                        8, 30, 9, 30, -180, 60),
+                new DaySample("소프트웨어공학 특강", "공대 7호관",
+                        "객체지향 설계 원칙(SOLID) 및 UML 다이어그램 실무 적용 특강", true, 30, 0,
+                        11, 0, 13, 0, -40, 60),
+                new DaySample("데이터베이스 시스템 실습", "전산실습실 301호",
+                        "트랜잭션 격리 수준 실험 및 실행 계획(Execution Plan) 분석 실습", true, 15, 2,
+                        13, 30, 15, 0, 17, 75),
+                new DaySample("캡스톤 프로젝트 중간 회의", "소프트웨어공학 연구실",
+                        "Java Swing 원형 타임라인 렌더링 및 자연어 프롬프트 파서 코드 리뷰", true, 15, 1,
+                        15, 30, 17, 0, 120, 90),
+                new DaySample("알고리즘 스터디", "중앙도서관 그룹스터디룸 B",
+                        "그래프 탐색(BFS/DFS) 및 다이나믹 프로그래밍 실전 문제 풀이", true, 30, 4,
+                        19, 0, 21, 0, 240, 120));
+
         private void seedDaySchedules(LocalDate date) {
-            addSample(date, 8, 30, 9, 30,
-                    "모닝 러닝 & 스트레칭", "대운동장 트랙",
-                    "상쾌한 하루 시작을 위한 5km 조깅 및 코어 스트레칭", false, 10, 0, 3);
+            for (DaySample t : DAY_SAMPLES) {
+                addSample(date, t.sh, t.sm, t.eh, t.em, t.title, t.location, t.description, t.notify, t.leadMin, 0, t.colorIdx);
+            }
+        }
 
-            addSample(date, 11, 0, 13, 0,
-                    "소프트웨어공학 특강", "공대 7호관",
-                    "객체지향 설계 원칙(SOLID) 및 UML 다이어그램 실무 적용 특강", true, 30, 0, 0);
+        private static boolean isDaySample(ScheduleDTO s) {
+            for (DaySample t : DAY_SAMPLES) {
+                if (t.title.equals(s.title) && t.location.equals(s.location)) return true;
+            }
+            return false;
+        }
 
-            addSample(date, 13, 30, 15, 0,
-                    "데이터베이스 시스템 실습", "전산실습실 301호",
-                    "트랜잭션 격리 수준 실험 및 실행 계획(Execution Plan) 분석 실습", true, 15, 0, 2);
+        /**
+         * 오늘 날짜의 하루 샘플 일과를 현재 시각 기준으로 다시 배치한다. 직접 만든 일정과 다른 날짜는 건드리지 않는다.
+         * 하루를 벗어나는 일정은 오늘 안으로 잘라 내거나 넣지 않는다.
+         *
+         * @param now 기준 일시
+         * @return 새로 배치한 샘플 일정 수
+         */
+        public synchronized int alignTodaySamplesToNow(LocalDateTime now) {
+            LocalDate today = now.toLocalDate();
+            LocalDateTime base = now.truncatedTo(ChronoUnit.MINUTES);
+            LocalDateTime dayStart = today.atStartOfDay();
+            LocalDateTime dayEnd = today.atTime(23, 59);
 
-            addSample(date, 15, 30, 17, 0,
-                    "캡스톤 프로젝트 중간 회의", "소프트웨어공학 연구실",
-                    "Java Swing 원형 타임라인 렌더링 및 자연어 프롬프트 파서 코드 리뷰", true, 15, 0, 1);
+            schedules.removeIf(s -> isDaySample(s) && s.startDateTime.toLocalDate().equals(today));
 
-            addSample(date, 19, 0, 21, 0,
-                    "알고리즘 스터디", "중앙도서관 그룹스터디룸 B",
-                    "그래프 탐색(BFS/DFS) 및 다이나믹 프로그래밍 실전 문제 풀이", true, 30, 0, 4);
+            int added = 0;
+            for (DaySample t : DAY_SAMPLES) {
+                LocalDateTime s = base.plusMinutes(t.offsetMin);
+                LocalDateTime e = s.plusMinutes(t.durationMin);
+                if (s.isBefore(dayStart)) s = dayStart;
+                if (e.isAfter(dayEnd)) e = dayEnd;
+                if (ChronoUnit.MINUTES.between(s, e) < 15) continue;
+                schedules.add(new ScheduleDTO(UUID.randomUUID().toString(), t.title, s, e,
+                        t.location, t.description, t.notify, t.leadMin, 0, t.colorIdx));
+                added++;
+            }
+            saveToDisk();
+            return added;
         }
 
         private void addSample(LocalDate date, int sh, int sm, int eh, int em,
@@ -556,6 +668,16 @@ public class ChronoCircleApp {
          * @return 분석 결과. {@link ParsedScheduleDTO#parseConfidenceNote}에 어떤 방식으로 분석했는지 적힌다
          */
         public ParsedScheduleDTO extractScheduleData(String promptText, LocalDate referenceDate) {
+            return extractScheduleData(promptText, referenceDate, LocalDateTime.now());
+        }
+
+        /**
+         * @param promptText 사용자가 입력한 문장
+         * @param referenceDate "내일", "다음 주" 같은 상대 날짜의 기준일 (달력에서 선택한 날짜)
+         * @param now "10분 뒤", "지금" 같은 표현의 기준이 되는 현재 시각
+         * @return 분석 결과
+         */
+        public ParsedScheduleDTO extractScheduleData(String promptText, LocalDate referenceDate, LocalDateTime now) {
             if (promptText == null || promptText.trim().isEmpty()) {
                 return new ParsedScheduleDTO("", LocalDateTime.of(referenceDate, LocalTime.of(15, 0)),
                         LocalDateTime.of(referenceDate, LocalTime.of(16, 0)), "", "", "", "입력된 문장이 없습니다.");
@@ -563,50 +685,71 @@ public class ChronoCircleApp {
 
             String text = promptText.trim();
             String apiKey = resolveApiKey();
-            if (apiKey == null) {
-                return parseKoreanNaturalLanguage(text, referenceDate);
+            // "N분 뒤"처럼 현재 시각 기준 표현은 내장 파서가 정확하게 즉시 계산하므로 Gemini를 부르지 않는다.
+            if (apiKey == null || findRelativeTime(text) != null) {
+                return parseKoreanNaturalLanguage(text, referenceDate, now);
             }
             try {
-                return callGeminiApi(text, referenceDate, apiKey);
+                return callGeminiApi(text, referenceDate, now, apiKey);
             } catch (Exception e) {
-                ParsedScheduleDTO fallback = parseKoreanNaturalLanguage(text, referenceDate);
+                ParsedScheduleDTO fallback = parseKoreanNaturalLanguage(text, referenceDate, now);
                 fallback.parseConfidenceNote = "Gemini 분석 실패(" + e.getMessage() + "), 내장 파서 사용 — " + fallback.parseConfidenceNote;
                 return fallback;
             }
         }
 
+        /** "지금부터 1시간 반 뒤", "30분 후에", "지금 시간으로 부터 1분 뒤에" 같은 현재 시각 기준 표현 */
+        static final Pattern RELATIVE_TIME = Pattern.compile(
+                "(?:(?:지금|현재)(?:\\s*(?:시간|시각))?\\s*(?:으로|에서)?\\s*부터\\s*)?"
+                + "(?:(\\d{1,3})\\s*시간\\s*(반)?\\s*)?(?:(\\d{1,4})\\s*분\\s*)?"
+                + "(?:뒤|후|있다가|이따가|지나서)(?:에)?");
+
+        /** @return 숫자가 들어 있는 상대 시간 표현의 Matcher (없으면 null). "회의 후"처럼 숫자 없는 '후'는 무시한다. */
+        static Matcher findRelativeTime(String text) {
+            Matcher m = RELATIVE_TIME.matcher(text);
+            while (m.find()) {
+                if (m.group(1) != null || m.group(3) != null) return m;
+            }
+            return null;
+        }
+
+        /**
+         * 구어체 어미를 일정 제목에 어울리는 명사형으로 바꾼다. 예: "아침밥 먹을거야" → "아침밥 먹기", "공부할 예정" → "공부하기".
+         */
+        static String tidyTitle(String title) {
+            String t = title.replaceAll("[.!?~]+$", "").trim();
+            t = t.replaceAll("^(지금|이제|곧)\\s+", "").trim();
+            Matcher m = Pattern.compile("^(.*\\S)\\s*(?:거야|거예요|거에요|거임|거|게요|게|래요|래|예정이야|예정이에요|예정입니다|예정)$").matcher(t);
+            if (m.find()) {
+                String head = m.group(1).trim();
+                char last = head.charAt(head.length() - 1);
+                if (last == '을') {
+                    head = head.substring(0, head.length() - 1).trim() + "기";
+                } else if (last >= 0xAC00 && last <= 0xD7A3 && (last - 0xAC00) % 28 == 8) {
+                    // 받침 ㄹ (예: 할 → 하기, 갈 → 가기)
+                    head = head.substring(0, head.length() - 1) + (char) (last - 8) + "기";
+                }
+                if (!head.isEmpty()) t = head;
+            }
+            return t;
+        }
+
         private static final String CONFIG_KEY = "gemini.api.key";
         private static final String CONFIG_MODEL = "gemini.model";
 
-        /** 시스템 속성 chronocircle.config가 있으면 그 경로를, 없으면 사용자 홈 폴더의 기본 설정 파일을 쓴다. */
+        /** Gemini API 키를 발급받는 Google AI Studio 페이지 */
+        public static final String API_KEY_PAGE = "https://aistudio.google.com/apikey";
+
         public static Path configPath() {
-            String custom = System.getProperty("chronocircle.config");
-            if (custom != null && !custom.trim().isEmpty()) return Paths.get(custom.trim());
-            return Paths.get(System.getProperty("user.home"), ".chronocircle_config.properties");
+            return AppSettings.configPath();
         }
 
-        private static synchronized Properties loadConfig() {
-            Properties p = new Properties();
-            Path path = configPath();
-            if (Files.exists(path)) {
-                try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                    p.load(r);
-                } catch (IOException ignored) {}
-            }
-            return p;
+        private static Properties loadConfig() {
+            return AppSettings.load();
         }
 
-        private static synchronized void storeConfig(Properties p) throws IOException {
-            Path path = configPath();
-            if (path.getParent() != null) Files.createDirectories(path.getParent());
-            try (Writer w = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-                p.store(w, "ChronoCircle settings");
-            }
-            try {
-                Files.setPosixFilePermissions(path, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
-            } catch (UnsupportedOperationException | IOException ignored) {
-                // Windows는 POSIX 권한을 지원하지 않는다. 홈 폴더 자체가 사용자 전용이다.
-            }
+        private static void storeConfig(Properties p) throws IOException {
+            AppSettings.store(p);
         }
 
         private static String blankToNull(String s) {
@@ -701,18 +844,31 @@ public class ChronoCircleApp {
             throw new IOException("확인 실패 (HTTP " + code + ")");
         }
 
-        private ParsedScheduleDTO callGeminiApi(String promptText, LocalDate refDate, String apiKey) throws IOException {
+        private ParsedScheduleDTO callGeminiApi(String promptText, LocalDate refDate, LocalDateTime now, String apiKey) throws IOException {
             String model = resolveModel();
+            String body;
+            try {
+                body = postGenerateContent(model, apiKey, buildGeminiRequest(promptText, refDate, now, thinkingConfigFor(model)));
+            } catch (IOException e) {
+                // 모델이 thinking 설정을 지원하지 않으면(HTTP 400) 설정 없이 한 번 더 요청한다.
+                if (!"HTTP 400".equals(e.getMessage())) throw e;
+                body = postGenerateContent(model, apiKey, buildGeminiRequest(promptText, refDate, now, null));
+            }
+            ParsedScheduleDTO result = parseGeminiResponse(body, promptText, refDate);
+            result.parseConfidenceNote = "Gemini(" + model + ") " + result.parseConfidenceNote;
+            return result;
+        }
+
+        private static String postGenerateContent(String model, String apiKey, String requestJson) throws IOException {
             HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE + model + ":generateContent").openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(10000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             conn.setRequestProperty("x-goog-api-key", apiKey);
-
             try (OutputStream os = conn.getOutputStream()) {
-                os.write(buildGeminiRequest(promptText, refDate).getBytes(StandardCharsets.UTF_8));
+                os.write(requestJson.getBytes(StandardCharsets.UTF_8));
             }
             int code = conn.getResponseCode();
             InputStream in = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
@@ -720,21 +876,44 @@ public class ChronoCircleApp {
             if (code != 200) {
                 throw new IOException("HTTP " + code);
             }
-            ParsedScheduleDTO result = parseGeminiResponse(body, promptText, refDate);
-            result.parseConfidenceNote = "Gemini(" + model + ") " + result.parseConfidenceNote;
-            return result;
+            return body;
         }
 
-        static String buildGeminiRequest(String promptText, LocalDate refDate) {
-            String instruction = "너는 한국어 일정 문장에서 일정 정보를 추출하는 도우미다.\n"
-                    + "기준일은 " + refDate + " (" + refDate.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.KOREAN) + ")이다.\n"
-                    + "'내일', '다음 주 수요일' 같은 상대 날짜는 기준일로부터 계산한다.\n"
-                    + "date는 YYYY-MM-DD, startTime과 endTime은 24시간제 HH:mm로 쓴다.\n"
-                    + "시작 시각이 없으면 15:00, 종료 시각이나 소요 시간이 없으면 endTime은 빈 문자열로 둔다.\n"
-                    + "title에는 날짜, 시간, 장소, '등록해줘' 같은 요청 표현을 빼고 일정 이름만 쓴다. 장소가 없으면 location은 빈 문자열이다.\n"
+        /**
+         * 응답 지연의 대부분은 모델의 추론(thinking) 단계에서 생기므로 단순 추출 작업에서는 최소로 줄인다.
+         * Gemini 2.x는 thinkingBudget, 3 이후는 thinkingLevel을 쓴다.
+         *
+         * @return generationConfig에 넣을 thinkingConfig JSON (해당 없음이면 null)
+         */
+        static String thinkingConfigFor(String model) {
+            String m = model.toLowerCase(Locale.ROOT);
+            if (m.startsWith("gemini-1")) return null;
+            if (m.startsWith("gemini-2")) {
+                return m.contains("pro") ? "{\"thinkingBudget\":128}" : "{\"thinkingBudget\":0}";
+            }
+            return m.contains("pro") ? "{\"thinkingLevel\":\"low\"}" : "{\"thinkingLevel\":\"minimal\"}";
+        }
+
+        static String buildGeminiRequest(String promptText, LocalDate refDate, LocalDateTime now, String thinkingConfig) {
+            String instruction = "한국어 일정 문장에서 일정 정보를 JSON으로 추출한다.\n"
+                    + "현재 시각: " + now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + " ("
+                    + now.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.KOREAN) + ")\n"
+                    + "기준일(달력에서 선택한 날짜): " + refDate + " ("
+                    + refDate.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.KOREAN) + ")\n"
+                    + "규칙:\n"
+                    + "- '내일', '다음 주 수요일' 같은 상대 날짜는 기준일로부터 계산한다.\n"
+                    + "- '지금', 'N분 뒤', 'N시간 후', '이따가', '곧' 같은 표현은 현재 시각으로부터 계산한다.\n"
+                    + "- 문장이 구어체이거나 어순이 엉망이어도 날짜와 시각을 최대한 추론한다.\n"
+                    + "- 시각이 명시되지 않으면 문맥으로 추정한다 (아침/아침밥 08:00, 점심 12:00, 저녁/저녁밥 18:00, 밤 21:00). 단서가 전혀 없으면 15:00.\n"
+                    + "- '3시'처럼 오전/오후가 없고 1~6시면 오후로 본다.\n"
+                    + "- date는 YYYY-MM-DD, startTime과 endTime은 24시간제 HH:mm. 종료 시각이나 소요 시간이 없으면 endTime은 빈 문자열.\n"
+                    + "- title은 날짜·시간·장소·요청/어미 표현을 빼고 짧은 명사형으로 쓴다 (예: '아침밥 먹을거야' -> '아침 식사', '회의 잡아줘' -> '회의').\n"
+                    + "- 장소가 없으면 location은 빈 문자열.\n"
                     + "문장: " + promptText;
             return "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":" + jsonQuote(instruction) + "}]}],"
                     + "\"generationConfig\":{"
+                    + "\"temperature\":0,\"maxOutputTokens\":256,"
+                    + (thinkingConfig == null ? "" : "\"thinkingConfig\":" + thinkingConfig + ",")
                     + "\"responseMimeType\":\"application/json\","
                     + "\"responseSchema\":{\"type\":\"OBJECT\",\"properties\":{"
                     + "\"title\":{\"type\":\"STRING\"},\"date\":{\"type\":\"STRING\"},"
@@ -763,7 +942,7 @@ public class ChronoCircleApp {
                 throw new IOException("결과가 JSON 객체가 아님");
             }
             Map<?, ?> m = (Map<?, ?>) data;
-            String title = str(m.get("title"));
+            String title = tidyTitle(str(m.get("title")));
             String location = str(m.get("location"));
             LocalDate date;
             LocalTime start;
@@ -822,8 +1001,27 @@ public class ChronoCircleApp {
          * @return 분석 결과
          */
         public ParsedScheduleDTO parseKoreanNaturalLanguage(String raw, LocalDate baseDate) {
+            return parseKoreanNaturalLanguage(raw, baseDate, LocalDateTime.now());
+        }
+
+        /**
+         * @param now "N분 뒤" 같은 현재 시각 기준 표현의 기준 시각
+         */
+        public ParsedScheduleDTO parseKoreanNaturalLanguage(String raw, LocalDate baseDate, LocalDateTime now) {
             String working = raw.trim();
             LocalDate targetDate = baseDate;
+
+            Matcher mRel = findRelativeTime(working);
+            if (mRel != null) {
+                long minutes = (mRel.group(1) != null ? Long.parseLong(mRel.group(1)) * 60 : 0)
+                        + (mRel.group(2) != null ? 30 : 0)
+                        + (mRel.group(3) != null ? Long.parseLong(mRel.group(3)) : 0);
+                // 분 단위 일정이므로 가장 가까운 분으로 반올림한다.
+                LocalDateTime relStart = now.plusMinutes(minutes).plusSeconds(30).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+                working = (working.substring(0, mRel.start()) + " " + working.substring(mRel.end()));
+                working = working.replaceAll("(지금|현재)(\\s*(시간|시각))?\\s*(으로|에서)?\\s*부터", " ");
+                return buildParsed(raw, working, relStart, null, "빠른 분석(현재 시각 기준)");
+            }
 
             Matcher mFullDate = Pattern.compile("(20\\d{2})[년.\\-/\\s]+(\\d{1,2})[월.\\-/\\s]+(\\d{1,2})일?").matcher(working);
             Matcher mMonthDay = Pattern.compile("(\\d{1,2})월\\s*(\\d{1,2})일").matcher(working);
@@ -874,13 +1072,14 @@ public class ChronoCircleApp {
 
             int startHour = 15;
             int startMin = 0;
-            int durationMin = 60;
+            boolean timeFound = false;
             Integer endHour = null;
             Integer endMin = null;
 
-            Pattern rangePat = Pattern.compile("(오전|아침|새벽|오후|저녁|밤|낮)?\\s*(\\d{1,2})시(?:\\s*(\\d{1,2})분|반)?\\s*(?:부터|~|-)\\s*(오전|오후|저녁|밤)?\\s*(\\d{1,2})시(?:\\s*(\\d{1,2})분|반)?(?:까지)?");
+            Pattern rangePat = Pattern.compile("(오전|아침|새벽|오후|저녁|밤|낮)?\\s*(\\d{1,2})시(?!간)(?:\\s*(\\d{1,2})분|반)?\\s*(?:부터|~|-)\\s*(오전|오후|저녁|밤)?\\s*(\\d{1,2})시(?!간)(?:\\s*(\\d{1,2})분|반)?(?:까지)?");
             Matcher mRange = rangePat.matcher(working);
             if (mRange.find()) {
+                timeFound = true;
                 String ampm1 = mRange.group(1);
                 int h1 = Integer.parseInt(mRange.group(2));
                 int min1 = mRange.group(3) != null ? Integer.parseInt(mRange.group(3)) : (mRange.group(0).contains("시반") || mRange.group(0).contains("시 반") ? 30 : 0);
@@ -895,9 +1094,10 @@ public class ChronoCircleApp {
                 endMin = min2;
                 working = working.replace(mRange.group(0), " ");
             } else {
-                Pattern singleTimePat = Pattern.compile("(오전|아침|새벽|오후|저녁|밤|낮)?\\s*(\\d{1,2})시(?:\\s*(\\d{1,2})분|\\s*(반))?(?:에)?");
+                Pattern singleTimePat = Pattern.compile("(오전|아침|새벽|오후|저녁|밤|낮)?\\s*(\\d{1,2})시(?!간)(?:\\s*(\\d{1,2})분|\\s*(반))?(?:에)?");
                 Matcher mSingle = singleTimePat.matcher(working);
                 if (mSingle.find()) {
+                    timeFound = true;
                     String ampm = mSingle.group(1);
                     int h = Integer.parseInt(mSingle.group(2));
                     int min = 0;
@@ -910,6 +1110,7 @@ public class ChronoCircleApp {
                     Pattern colonTime = Pattern.compile("(\\d{1,2}):(\\d{2})");
                     Matcher mColon = colonTime.matcher(working);
                     if (mColon.find()) {
+                        timeFound = true;
                         startHour = Math.min(23, Integer.parseInt(mColon.group(1)));
                         startMin = Math.min(59, Integer.parseInt(mColon.group(2)));
                         working = working.replace(mColon.group(0), " ");
@@ -917,10 +1118,39 @@ public class ChronoCircleApp {
                 }
             }
 
+            if (!timeFound) {
+                // 시각이 없으면 문맥 단어로 추정한다 (예: "아침밥" → 08:00)
+                if (working.matches(".*(아침|조식|브런치).*")) startHour = working.contains("브런치") ? 11 : 8;
+                else if (working.matches(".*(점심|중식|런치).*")) startHour = 12;
+                else if (working.matches(".*(저녁|석식|디너).*")) startHour = 18;
+                else if (working.contains("새벽")) startHour = 6;
+                else if (working.matches(".*(밤|야식).*")) startHour = 21;
+            }
+
+            LocalTime sTime = LocalTime.of(Math.max(0, Math.min(23, startHour)), Math.max(0, Math.min(59, startMin)));
+            LocalDateTime startDT = LocalDateTime.of(targetDate, sTime);
+            LocalDateTime explicitEnd = null;
+            if (endHour != null && endMin != null) {
+                explicitEnd = LocalDateTime.of(targetDate,
+                        LocalTime.of(Math.max(0, Math.min(23, endHour)), Math.max(0, Math.min(59, endMin))));
+            }
+            return buildParsed(raw, working, startDT, explicitEnd, "내장 파서 분석 완료");
+        }
+
+        /** 날짜·시각을 떼어 낸 나머지 문장에서 소요 시간, 장소, 제목을 뽑아 결과를 만든다. */
+        private ParsedScheduleDTO buildParsed(String raw, String working, LocalDateTime startDT,
+                                              LocalDateTime explicitEnd, String notePrefix) {
+            int durationMin = 60;
             Matcher mDurHour = Pattern.compile("(\\d{1,2})시간(?:\\s*(반))?(?:\\s*동안)?").matcher(working);
             if (mDurHour.find()) {
                 durationMin = Integer.parseInt(mDurHour.group(1)) * 60 + (mDurHour.group(2) != null ? 30 : 0);
                 working = working.replace(mDurHour.group(0), " ");
+            } else {
+                Matcher mDurMin = Pattern.compile("(\\d{1,3})분\\s*동안").matcher(working);
+                if (mDurMin.find()) {
+                    durationMin = Math.max(1, Integer.parseInt(mDurMin.group(1)));
+                    working = working.replace(mDurMin.group(0), " ");
+                }
             }
 
             String location = "";
@@ -939,25 +1169,17 @@ public class ChronoCircleApp {
 
             String title = working.replaceAll("\\s+", " ").trim();
             title = title.replaceAll("^(에서|에|부터|까지|일정|등록|추가)\\s*", "").trim();
-            title = title.replaceAll("\\s*(일정\\s*등록|추가해줘|등록해줘|잡아줘|예약해줘|있음|하기)$", "").trim();
+            title = title.replaceAll("\\s*(일정\\s*등록|추가해줘|등록해줘|잡아줘|예약해줘|알려줘|있음|하기)$", "").trim();
+            title = tidyTitle(title);
             if (title.isEmpty()) {
                 title = location.isEmpty() ? "새 스마트 일정" : location + " 미팅";
             }
 
-            LocalTime sTime = LocalTime.of(Math.max(0, Math.min(23, startHour)), Math.max(0, Math.min(59, startMin)));
-            LocalDateTime startDT = LocalDateTime.of(targetDate, sTime);
-            LocalDateTime endDT;
-            if (endHour != null && endMin != null) {
-                LocalTime eTime = LocalTime.of(Math.max(0, Math.min(23, endHour)), Math.max(0, Math.min(59, endMin)));
-                endDT = LocalDateTime.of(targetDate, eTime);
-                if (!endDT.isAfter(startDT)) endDT = startDT.plusMinutes(durationMin);
-            } else {
-                endDT = startDT.plusMinutes(durationMin);
-            }
+            LocalDateTime endDT = (explicitEnd != null && explicitEnd.isAfter(startDT)) ? explicitEnd : startDT.plusMinutes(durationMin);
 
-            String note = String.format("내장 파서 분석 완료: %s %s (%s)",
-                    targetDate.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")),
-                    sTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+            String note = String.format("%s: %s %s (%s)", notePrefix,
+                    startDT.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")),
+                    startDT.format(DateTimeFormatter.ofPattern("HH:mm")),
                     location.isEmpty() ? "장소 미지정" : location);
 
             return new ParsedScheduleDTO(title, startDT, endDT, location,
@@ -1179,7 +1401,7 @@ public class ChronoCircleApp {
          */
         public ParsedScheduleDTO parseNaturalLanguagePrompt(String promptText) {
             LocalDate baseDate = (mainFrame != null) ? mainFrame.getSelectedDate() : LocalDate.now();
-            return aiParser.extractScheduleData(promptText, baseDate);
+            return aiParser.extractScheduleData(promptText, baseDate, LocalDateTime.now());
         }
 
         /**
@@ -1309,6 +1531,31 @@ public class ChronoCircleApp {
                 }
             }
             return dispatchedCount;
+        }
+
+        /**
+         * 한 번 보낸 알림 기록을 지워 같은 알림 시각에 다시 보낼 수 있게 한다 (알림 테스트 후 원상 복구용).
+         *
+         * @param scheduleId 일정 ID
+         * @param triggerTime 알림 시각
+         */
+        public void forgetDispatchedNotification(String scheduleId, LocalDateTime triggerTime) {
+            if (scheduleId == null || triggerTime == null) return;
+            firedNotificationKeys.remove(scheduleId + "_" + triggerTime.truncatedTo(ChronoUnit.MINUTES));
+        }
+
+        /**
+         * 지금 이후에 울릴 가장 가까운 알림 대상 일정을 찾는다.
+         *
+         * @param after 기준 일시
+         * @return 다음 알림 일정 (없으면 null)
+         */
+        public ScheduleDTO findNextNotificationTarget(LocalDateTime after) {
+            return repository.findAll().stream()
+                    .filter(s -> s.notificationEnabled && s.nextNotificationTime != null)
+                    .filter(s -> s.nextNotificationTime.isAfter(after))
+                    .min(Comparator.comparing(s -> s.nextNotificationTime))
+                    .orElse(null);
         }
 
         /**
@@ -1744,7 +1991,11 @@ public class ChronoCircleApp {
         /** 회전 각도를 0으로 되돌려 현재 시각 기준 화면으로 복귀한다. */
         public void animateResetToCurrentTime() {
             highlightedScheduleId = null;
-            animateRotationTo(0.0, this::repaint);
+            animateRotationTo(0.0, () -> {
+                repaint();
+                // 되돌리는 애니메이션 중에 뜬 "타임라인 회전 중" 표시를 실시간 추적 상태로 되돌린다.
+                if (controller.mainFrame != null) controller.mainFrame.updateSyncBannerState(false);
+            });
         }
 
         private void animateRotationTo(double destDeg, Runnable onComplete) {
@@ -3298,7 +3549,7 @@ public class ChronoCircleApp {
 
         public GeminiKeySettingsDialog(Window owner) {
             super(owner, "Gemini API 키 설정", ModalityType.APPLICATION_MODAL);
-            setSize(540, 400);
+            setSize(540, 430);
             setLocationRelativeTo(owner);
             setLayout(new BorderLayout());
             getContentPane().setBackground(Color.WHITE);
@@ -3315,10 +3566,24 @@ public class ChronoCircleApp {
             body.add(Box.createVerticalStrut(6));
 
             JLabel sub = new JLabel("<html>AI 자연어 일정 등록에 쓸 키를 입력하세요. 키는 이 PC의 사용자 홈 폴더에만 저장되며,<br/>"
-                    + "키가 없으면 내장 한국어 파서로 분석합니다. 키 발급: Google AI Studio</html>");
+                    + "키가 없으면 내장 한국어 파서로 분석합니다.</html>");
             sub.setFont(uiFont(Font.PLAIN, 12));
             sub.setForeground(TEXT_SECONDARY);
             body.add(leftAligned(sub));
+            body.add(Box.createVerticalStrut(6));
+
+            JLabel lblLink = new JLabel("<html><u>Google AI Studio에서 Gemini API 키 발급받기 ↗</u></html>");
+            lblLink.setFont(uiFont(Font.BOLD, 12));
+            lblLink.setForeground(PRIMARY_BLUE);
+            lblLink.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            lblLink.setToolTipText(AIPromptParser.API_KEY_PAGE);
+            lblLink.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    openApiKeyPage();
+                }
+            });
+            body.add(leftAligned(lblLink));
             body.add(Box.createVerticalStrut(10));
 
             lblCurrent.setFont(uiFont(Font.BOLD, 12));
@@ -3390,6 +3655,22 @@ public class ChronoCircleApp {
 
             getRootPane().setDefaultButton(null);
             refreshCurrentStatus();
+        }
+
+        /** 기본 브라우저로 키 발급 페이지를 연다. 열 수 없으면 주소를 클립보드에 복사한다. */
+        private void openApiKeyPage() {
+            try {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    Desktop.getDesktop().browse(new java.net.URI(AIPromptParser.API_KEY_PAGE));
+                    setStatus("브라우저에서 키 발급 페이지를 열었습니다. 발급받은 키를 위 칸에 붙여 넣으세요.", TEXT_SECONDARY);
+                    return;
+                }
+            } catch (Exception ignored) {
+                // 아래에서 주소 복사로 대신한다.
+            }
+            Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new java.awt.datatransfer.StringSelection(AIPromptParser.API_KEY_PAGE), null);
+            setStatus("브라우저를 열 수 없어 주소를 복사했습니다: " + AIPromptParser.API_KEY_PAGE, WARNING_AMBER);
         }
 
         private static JComponent leftAligned(JComponent c) {
@@ -3769,6 +4050,12 @@ public class ChronoCircleApp {
         private ScheduleDTO lastNotifiedSchedule;
         private TrayIcon trayIcon;
 
+        private ModernButton btnNotificationTest;
+        private ScheduleDTO notificationTestTarget;
+        private LocalDateTime notificationTestOriginalTrigger;
+        private LocalDate notificationTestReturnDate;
+        private javax.swing.Timer notificationTestEndTimer;
+
         private CardLayout centerCardLayout;
         private JPanel centerCardContainer;
         private CircularCanvasPanel circularCanvasPanel;
@@ -3817,7 +4104,7 @@ public class ChronoCircleApp {
 
             refreshAllViews();
             installTrayIcon();
-            // 시작할 때는 PC의 실제 시각을 그대로 쓴다. 데모 시각은 상단 시계 메뉴에서 직접 고를 때만 적용한다.
+            // 시작할 때는 PC의 실제 시각을 그대로 쓴다. 시각을 옮기는 것은 [알림 테스트] 중 몇 초뿐이다.
             this.systemTimer.start();
         }
 
@@ -3984,14 +4271,7 @@ public class ChronoCircleApp {
             lblLiveClock.setFont(uiFont(Font.BOLD, 12));
             lblLiveClock.setForeground(PRIMARY_BLUE);
             lblLiveClock.setBorder(new EmptyBorder(0, 4, 0, 4));
-            lblLiveClock.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            lblLiveClock.setToolTipText("클릭하면 시뮬레이션 시각(+15분 / 현재 PC 실제 시각 / 데모 시각 2026-10-15 12:18)을 전환하거나 알림을 즉시 테스트할 수 있습니다.");
-            lblLiveClock.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    showTimeAndNotificationControlMenu(lblLiveClock);
-                }
-            });
+            lblLiveClock.setToolTipText("현재 PC 시각");
 
             btnToggleRightDrawer = new ModernButton("📋 한눈에 보기 탭 닫기",
                     PRIMARY_LIGHT_BG, new Color(0xE0, 0xE7, 0xFF), PRIMARY_BLUE, PRIMARY_BORDER, 10);
@@ -4005,13 +4285,20 @@ public class ChronoCircleApp {
 
             viewToggleButtons = new AnimatedSegmentedControl(this::switchViewMode);
 
-            ModernButton btnAiKey = new ModernButton("AI 키", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 10);
-            btnAiKey.setFont(uiFont(Font.BOLD, 12));
-            btnAiKey.setPreferredSize(new Dimension(64, 36));
-            btnAiKey.setToolTipText("AI 자연어 일정 등록에 쓸 Gemini API 키를 등록하거나 바꿉니다.");
-            btnAiKey.addActionListener(e -> new GeminiKeySettingsDialog(this).setVisible(true));
+            btnNotificationTest = new ModernButton("알림 테스트", Color.WHITE, BG_SUBTLE, INDIGO_PURPLE, PRIMARY_BORDER, 10);
+            btnNotificationTest.setFont(uiFont(Font.BOLD, 12));
+            btnNotificationTest.setPreferredSize(new Dimension(92, 36));
+            btnNotificationTest.setToolTipText("다음 알림 시각 직전으로 잠시 이동해 실제 알림(상단 배너 + 트레이)이 뜨는지 확인합니다.");
+            btnNotificationTest.addActionListener(e -> startNotificationTest());
 
-            rightControls.add(btnAiKey);
+            ModernButton btnSettings = new ModernButton("설정", Color.WHITE, BG_SUBTLE, PRIMARY_BLUE, PRIMARY_BORDER, 10);
+            btnSettings.setFont(uiFont(Font.BOLD, 12));
+            btnSettings.setPreferredSize(new Dimension(60, 36));
+            btnSettings.setToolTipText("Gemini API 키, 시작 시 샘플 일정 배치");
+            btnSettings.addActionListener(e -> showSettingsMenu(btnSettings));
+
+            rightControls.add(btnNotificationTest);
+            rightControls.add(btnSettings);
             rightControls.add(lblLiveClock);
             rightControls.add(btnToggleRightDrawer);
             rightControls.add(viewToggleButtons);
@@ -4381,7 +4668,7 @@ public class ChronoCircleApp {
             LocalDateTime now = systemTimer.now();
             lblLiveClock.setText(String.format("🕒 %s %s",
                     now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
-                    systemTimer.isSimulated() ? "(시뮬레이션)" : ""));
+                    notificationTestTarget != null ? "(알림 테스트 중)" : systemTimer.isSimulated() ? "(시뮬레이션)" : ""));
 
             controller.checkAndDispatchNotifications(now);
 
@@ -4405,6 +4692,11 @@ public class ChronoCircleApp {
             lblBannerNotificationText.setText(msg);
             notificationBannerDrawer.setExpanded(true, true);
 
+            if (notificationTestTarget != null && Objects.equals(notificationTestTarget.id, s.id)) {
+                // 테스트 알림이 실제로 발송됐다. 배너를 볼 시간을 준 뒤 실제 시각으로 돌아간다.
+                scheduleNotificationTestEnd(6000);
+            }
+
             if (trayIcon != null) {
                 trayIcon.displayMessage("ChronoCircle 일정 알림",
                         String.format("%s (%s, %s)", s.title, s.getShortTimeRangeText(),
@@ -4413,52 +4705,122 @@ public class ChronoCircleApp {
             }
         }
 
-        private void showTimeAndNotificationControlMenu(Component invoker) {
+        private void showSettingsMenu(Component invoker) {
             JPopupMenu menu = new JPopupMenu();
             menu.setBackground(Color.WHITE);
             menu.setBorder(new LineBorder(BORDER_COLOR, 1, true));
 
-            JMenuItem itemDemo = new JMenuItem("🎯 와이어프레임 데모 시각으로 설정 (2026-10-15 12:18, 42분 남음)");
-            itemDemo.setFont(uiFont(Font.BOLD, 12));
-            itemDemo.addActionListener(e -> {
-                selectedDate = LocalDate.of(2026, 10, 15);
-                systemTimer.setSimulationTarget(LocalDateTime.of(2026, 10, 15, 12, 18, 0));
-                controller.resyncDashboardToCurrentTime(circularCanvasPanel, systemTimer);
-                refreshAllViews();
-            });
+            JMenuItem itemKey = new JMenuItem("Gemini API 키 설정…");
+            itemKey.setFont(uiFont(Font.BOLD, 12));
+            itemKey.addActionListener(e -> new GeminiKeySettingsDialog(this).setVisible(true));
 
-            JMenuItem itemAdd15 = new JMenuItem("⏩ 시뮬레이션 시각 +15분 빨리감기");
-            itemAdd15.setFont(uiFont(Font.PLAIN, 12));
-            itemAdd15.addActionListener(e -> systemTimer.addSimulationMinutes(15));
-
-            JMenuItem itemRealTime = new JMenuItem("🕒 현재 실제 시스템 시각으로 동기화");
-            itemRealTime.setFont(uiFont(Font.PLAIN, 12));
-            itemRealTime.addActionListener(e -> {
-                selectedDate = LocalDate.now();
-                systemTimer.resetSimulationOffset();
-                controller.resyncDashboardToCurrentTime(circularCanvasPanel, systemTimer);
-                refreshAllViews();
-            });
-
-            JMenuItem itemTestNoti = new JMenuItem("🔔 스마트 푸시 알림 배너 즉시 테스트 (UC-06)");
-            itemTestNoti.setFont(uiFont(Font.BOLD, 12));
-            itemTestNoti.setForeground(INDIGO_PURPLE);
-            itemTestNoti.addActionListener(e -> {
-                ScheduleDTO active = circularCanvasPanel.getActiveOrPreviewSchedule();
-                if (active != null) {
-                    dispatchNotificationUI(active);
-                } else {
-                    List<ScheduleDTO> all = controller.getRepository().findAll();
-                    if (!all.isEmpty()) dispatchNotificationUI(all.get(0));
+            JCheckBoxMenuItem itemAlign = new JCheckBoxMenuItem("시작할 때 오늘 샘플 일정을 현재 시각에 맞추기",
+                    AppSettings.isAlignSamplesOnStartup());
+            itemAlign.setFont(uiFont(Font.PLAIN, 12));
+            itemAlign.addActionListener(e -> {
+                try {
+                    AppSettings.setBoolean(AppSettings.ALIGN_SAMPLES_ON_STARTUP, itemAlign.isSelected());
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "설정을 저장하지 못했습니다: " + ex.getMessage(),
+                            "설정", JOptionPane.WARNING_MESSAGE);
                 }
             });
 
-            menu.add(itemDemo);
-            menu.add(itemAdd15);
-            menu.add(itemRealTime);
+            JMenuItem itemAlignNow = new JMenuItem("지금 오늘 샘플 일정을 현재 시각에 맞추기");
+            itemAlignNow.setFont(uiFont(Font.PLAIN, 12));
+            itemAlignNow.addActionListener(e -> alignSamplesNow());
+
+            menu.add(itemKey);
             menu.addSeparator();
-            menu.add(itemTestNoti);
+            menu.add(itemAlign);
+            menu.add(itemAlignNow);
             menu.show(invoker, 0, invoker.getHeight() + 4);
+        }
+
+        /** 오늘 샘플 일정을 실제 현재 시각 기준으로 다시 배치하고 오늘 화면으로 이동한다. */
+        public void alignSamplesNow() {
+            int n = controller.getRepository().alignTodaySamplesToNow(LocalDateTime.now());
+            systemTimer.resetSimulationOffset();
+            changeSelectedDate(LocalDate.now());
+            controller.resyncDashboardToCurrentTime(circularCanvasPanel, systemTimer);
+            showStatusAfterReset("오늘 샘플 일정 " + n + "건을 현재 시각 기준으로 다시 배치했습니다.", SUCCESS_GREEN);
+        }
+
+        /** 대시보드가 현재 시각으로 돌아가는 애니메이션(약 0.4초)이 끝난 뒤 상태 문구를 보여 준다. */
+        private void showStatusAfterReset(String text, Color color) {
+            javax.swing.Timer t = new javax.swing.Timer(500, e -> {
+                lblRotateStatusText.setText(text);
+                lblRotateStatusText.setForeground(color);
+            });
+            t.setRepeats(false);
+            t.start();
+        }
+
+        /**
+         * 다음 알림 시각 3초 전으로 시계를 옮겨 실제 알림 경로(타이머 → 알림 검사 → 배너·트레이)가 동작하는지 확인한다.
+         * 알림이 뜨면 몇 초 뒤 실제 시각으로 돌아가고, 일정의 알림 상태는 테스트 전으로 되돌린다.
+         */
+        public void startNotificationTest() {
+            if (notificationTestTarget != null) return;
+            LocalDateTime realNow = LocalDateTime.now();
+            ScheduleDTO target = controller.findNextNotificationTarget(realNow);
+            if (target == null) {
+                int choice = JOptionPane.showConfirmDialog(this,
+                        "앞으로 울릴 알림이 없습니다.\n오늘 샘플 일정을 현재 시각에 맞춰 다시 배치한 뒤 테스트할까요?",
+                        "알림 테스트", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                if (choice != JOptionPane.YES_OPTION) return;
+                alignSamplesNow();
+                target = controller.findNextNotificationTarget(realNow);
+                if (target == null) return;
+            }
+
+            notificationTestTarget = target;
+            notificationTestOriginalTrigger = target.nextNotificationTime;
+            notificationTestReturnDate = selectedDate;
+            btnNotificationTest.setEnabled(false);
+            btnNotificationTest.setText("테스트 중…");
+
+            LocalDateTime triggerAt = target.nextNotificationTime.truncatedTo(ChronoUnit.MINUTES);
+            systemTimer.setSimulationTarget(triggerAt.minusSeconds(3));
+            if (!selectedDate.equals(triggerAt.toLocalDate())) {
+                changeSelectedDate(triggerAt.toLocalDate());
+            }
+            controller.resyncDashboardToCurrentTime(circularCanvasPanel, systemTimer);
+            showStatusAfterReset(String.format("알림 테스트: '%s' 알림 시각(%s) 직전으로 이동했습니다.",
+                    target.title, triggerAt.format(DateTimeFormatter.ofPattern("M/d HH:mm"))), INDIGO_PURPLE);
+
+            // 알림이 오지 않아도 15초 뒤에는 실제 시각으로 돌아간다.
+            scheduleNotificationTestEnd(15000);
+        }
+
+        private void scheduleNotificationTestEnd(int delayMs) {
+            if (notificationTestEndTimer != null) notificationTestEndTimer.stop();
+            notificationTestEndTimer = new javax.swing.Timer(delayMs, e -> endNotificationTest());
+            notificationTestEndTimer.setRepeats(false);
+            notificationTestEndTimer.start();
+        }
+
+        /** 알림 테스트를 끝내고 실제 시각과 원래 보던 날짜, 일정의 알림 상태를 되돌린다. */
+        public void endNotificationTest() {
+            if (notificationTestTarget == null) return;
+            if (notificationTestEndTimer != null) notificationTestEndTimer.stop();
+            ScheduleDTO target = notificationTestTarget;
+            notificationTestTarget = null;
+
+            controller.forgetDispatchedNotification(target.id, notificationTestOriginalTrigger);
+            controller.getRepository().updateNextNotificationTime(target.id, notificationTestOriginalTrigger);
+            systemTimer.resetSimulationOffset();
+            if (notificationTestReturnDate != null && !notificationTestReturnDate.equals(selectedDate)) {
+                changeSelectedDate(notificationTestReturnDate);
+            }
+            controller.resyncDashboardToCurrentTime(circularCanvasPanel, systemTimer);
+            btnNotificationTest.setEnabled(true);
+            btnNotificationTest.setText("알림 테스트");
+            onSystemTimerTick();
+        }
+
+        public boolean isNotificationTestRunning() {
+            return notificationTestTarget != null;
         }
 
         private void triggerSearchPopup(boolean showEmptyNotice) {
@@ -4766,6 +5128,9 @@ public class ChronoCircleApp {
             }
         } else {
             repo = new ScheduleRepository();
+            if (AppSettings.isAlignSamplesOnStartup()) {
+                repo.alignTodaySamplesToNow(LocalDateTime.now());
+            }
         }
         DraftSessionManager draftMgr = new DraftSessionManager();
         AIPromptParser parser = new AIPromptParser();
@@ -4823,6 +5188,23 @@ public class ChronoCircleApp {
                 p2.startDateTime + " ~ " + p2.endDateTime + " | " + p2.location);
         ParsedScheduleDTO p3 = controller.parseNaturalLanguagePrompt("   ");
         check("빈 문장 처리", p3 != null && p3.startDateTime != null, p3 == null ? "null" : p3.parseConfidenceNote);
+
+        AIPromptParser rel = new AIPromptParser();
+        LocalDateTime fixedNow = LocalDateTime.of(today, LocalTime.of(7, 30, 10));
+        ParsedScheduleDTO p4 = rel.extractScheduleData("지금 시간으로 부터 1분 뒤에 아침밥 먹을거야", today, fixedNow);
+        check("'지금부터 1분 뒤' -> 07:31", p4.startDateTime.equals(LocalDateTime.of(today, LocalTime.of(7, 31))), String.valueOf(p4.startDateTime));
+        check("구어체 제목 정리", "아침밥 먹기".equals(p4.title), p4.title + " | " + p4.parseConfidenceNote);
+        ParsedScheduleDTO p5 = rel.extractScheduleData("1시간 반 후에 도서관에서 공부할 예정", today, fixedNow);
+        check("'1시간 반 후' -> 09:00", p5.startDateTime.equals(LocalDateTime.of(today, LocalTime.of(9, 0))), String.valueOf(p5.startDateTime));
+        check("상대 시간 + 장소/제목", "도서관".equals(p5.location) && "공부하기".equals(p5.title), p5.location + " / " + p5.title);
+        ParsedScheduleDTO p6 = rel.parseKoreanNaturalLanguage("내일 점심 먹기", today, fixedNow);
+        check("'점심' -> 12:00", p6.startDateTime.equals(LocalDateTime.of(today.plusDays(1), LocalTime.of(12, 0))), String.valueOf(p6.startDateTime));
+        ParsedScheduleDTO p7 = rel.parseKoreanNaturalLanguage("오후 4시 2시간 동안 세미나", today, fixedNow);
+        check("'2시간 동안'을 2시로 오인하지 않음", p7.startDateTime.toLocalTime().equals(LocalTime.of(16, 0))
+                && p7.endDateTime.toLocalTime().equals(LocalTime.of(18, 0)), p7.startDateTime + " ~ " + p7.endDateTime);
+        check("'회의 후'는 상대 시간 아님", AIPromptParser.findRelativeTime("회의 후 식사") == null, "");
+        String req = AIPromptParser.buildGeminiRequest("1분 뒤 아침", today, fixedNow, AIPromptParser.thinkingConfigFor("gemini-3.8-flash"));
+        check("Gemini 요청에 현재 시각과 thinking 최소화 포함", req.contains("07:30") && req.contains("\"thinkingLevel\":\"minimal\""), "");
 
         System.out.println("[2] saveOrUpdateSchedule / 임시 저장");
         ScheduleDTO draft = new ScheduleDTO(null, "작성 중이던 임시 일정",
@@ -4890,7 +5272,48 @@ public class ChronoCircleApp {
         System.out.println("[7] 삭제");
         check("일정 삭제", repo.deleteById(good.id) && !repo.findById(good.id).isPresent() && repo.findAll().size() == before, "");
 
-        System.out.println("[8] Gemini 키 설정 (임시 설정 파일)");
+        System.out.println("[7-1] 오늘 샘플 일정 현재 시각 기준 재배치");
+        ScheduleDTO mine = new ScheduleDTO(null, "내가 만든 일정", LocalDateTime.of(today, LocalTime.of(6, 0)),
+                LocalDateTime.of(today, LocalTime.of(7, 0)), "집", "", true, 10, 0, 1);
+        repo.upsert(mine);
+        int tomorrowBefore = repo.findByDate(today.plusDays(1)).size();
+        LocalDateTime noon = LocalDateTime.of(today, LocalTime.of(12, 0, 40));
+        int aligned = repo.alignTodaySamplesToNow(noon);
+        repo.alignTodaySamplesToNow(noon);
+        List<ScheduleDTO> todayList = repo.findByDate(today);
+        long samplesToday = todayList.stream().filter(s -> !s.title.equals("내가 만든 일정")).count();
+        check("12:00 기준 재배치 5건, 두 번 해도 중복 없음", aligned == 5 && samplesToday == 5, aligned + "건 / 오늘 샘플 " + samplesToday + "건");
+        check("직접 만든 일정은 그대로", repo.findById(mine.id).map(s -> s.startDateTime.equals(mine.startDateTime)).orElse(false), "");
+        check("내일 일정은 그대로", repo.findByDate(today.plusDays(1)).size() == tomorrowBefore, "");
+        boolean lectureOngoing = todayList.stream().anyMatch(s -> s.title.equals("소프트웨어공학 특강") && s.isOngoingAt(noon));
+        check("재배치 직후 진행 중 일정 있음(특강)", lectureOngoing, "");
+        ScheduleDTO nextTarget = controller.findNextNotificationTarget(noon);
+        check("다음 알림 = 실습, 12:02", nextTarget != null && nextTarget.title.equals("데이터베이스 시스템 실습")
+                && nextTarget.nextNotificationTime.equals(LocalDateTime.of(today, LocalTime.of(12, 2))),
+                nextTarget == null ? "없음" : nextTarget.title + " " + nextTarget.nextNotificationTime);
+        int a1 = controller.checkAndDispatchNotifications(LocalDateTime.of(today, LocalTime.of(12, 2, 1)));
+        int a2 = controller.checkAndDispatchNotifications(LocalDateTime.of(today, LocalTime.of(12, 2, 30)));
+        controller.forgetDispatchedNotification(nextTarget.id, nextTarget.nextNotificationTime);
+        int a3 = controller.checkAndDispatchNotifications(LocalDateTime.of(today, LocalTime.of(12, 2, 40)));
+        check("알림 발송 -> 중복 차단 -> 기록 삭제 후 다시 발송", a1 == 1 && a2 == 0 && a3 == 1, a1 + "/" + a2 + "/" + a3);
+        repo.alignTodaySamplesToNow(LocalDateTime.of(today, LocalTime.of(23, 30)));
+        boolean inDay = repo.findByDate(today).stream().allMatch(s -> s.endDateTime.toLocalDate().equals(today));
+        check("23:30 재배치 시 모두 오늘 안", inDay, repo.findByDate(today).size() + "건");
+        repo.alignTodaySamplesToNow(LocalDateTime.of(today, LocalTime.of(0, 10)));
+        boolean startInDay = repo.findByDate(today).stream().allMatch(s -> s.startDateTime.toLocalDate().equals(today));
+        check("00:10 재배치 시 모두 오늘 안", startInDay, repo.findByDate(today).size() + "건");
+        repo.deleteById(mine.id);
+
+        System.out.println("[8] 설정 파일 (임시): Gemini 키, 시작 옵션");
+        check("시작 시 재배치 기본값 켬", AppSettings.isAlignSamplesOnStartup(), "");
+        try {
+            AppSettings.setBoolean(AppSettings.ALIGN_SAMPLES_ON_STARTUP, false);
+            check("시작 시 재배치 끄기 저장", !AppSettings.isAlignSamplesOnStartup(), "");
+            AppSettings.setBoolean(AppSettings.ALIGN_SAMPLES_ON_STARTUP, true);
+        } catch (IOException ex) {
+            check("시작 옵션 저장", false, ex.getMessage());
+        }
+        check("키 발급 페이지 주소", AIPromptParser.API_KEY_PAGE.startsWith("https://aistudio.google.com/"), AIPromptParser.API_KEY_PAGE);
         try {
             check("처음에는 저장된 키 없음", AIPromptParser.getSavedApiKey() == null, AIPromptParser.configPath().toString());
             AIPromptParser.saveSettings("  TEST-KEY-1234567890  ", "gemini-test-model");
@@ -4903,6 +5326,7 @@ public class ChronoCircleApp {
             check("키 삭제 후 모델 설정은 유지", AIPromptParser.getSavedApiKey() == null
                     && "gemini-test-model".equals(AIPromptParser.getSavedModel()), "");
             AIPromptParser.saveSettings(null, null);
+            check("키 저장해도 시작 옵션 유지", AppSettings.isAlignSamplesOnStartup(), "");
             check("모델 비우면 기본 모델", System.getenv("GEMINI_MODEL") != null
                     || AIPromptParser.DEFAULT_MODEL.equals(AIPromptParser.resolveModel()), AIPromptParser.resolveModel());
         } catch (IOException ex) {
